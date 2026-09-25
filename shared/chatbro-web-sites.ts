@@ -1,0 +1,29 @@
+export type AiWebSite = { name: string; url: string; category: "محادثة" | "برمجة وتطبيقات" | "بحث وتعليم" | "صور وفيديو" | "صوت وموسيقى"; strength: 1 | 2 | 3 | 4 | 5; access: "مجاني" | "مجاني جزئي" | "مدفوع"; description: string };
+const s = (name: string, url: string, category: AiWebSite["category"], strength: AiWebSite["strength"], access: AiWebSite["access"], description: string): AiWebSite => ({ name, url, category, strength, access, description });
+export const aiWebSites: AiWebSite[] = [
+ s("ChatGPT","https://chatgpt.com","محادثة",5,"مجاني جزئي","محادثة وكتابة وتحليل."), s("Claude","https://claude.ai","محادثة",5,"مجاني جزئي","تحليل وكتابة وبرمجة."), s("Gemini","https://gemini.google.com","محادثة",5,"مجاني جزئي","مساعد Google للبحث والملفات."), s("Copilot","https://copilot.microsoft.com","محادثة",4,"مجاني","محادثة وبحث وإنشاء صور."), s("Perplexity","https://www.perplexity.ai","بحث وتعليم",5,"مجاني جزئي","بحث بمصادر وروابط."), s("DeepSeek","https://chat.deepseek.com","محادثة",4,"مجاني","استدلال وبرمجة."), s("Mistral Le Chat","https://chat.mistral.ai","محادثة",4,"مجاني جزئي","محادثة وكتابة وبرمجة."), s("Grok","https://grok.com","محادثة",4,"مجاني جزئي","محادثة وبحث."), s("Poe","https://poe.com","محادثة",4,"مجاني جزئي","عدة نماذج في موقع واحد."), s("HuggingChat","https://huggingface.co/chat","محادثة",4,"مجاني","نماذج مفتوحة."), s("NotebookLM","https://notebooklm.google.com","بحث وتعليم",5,"مجاني","تحليل مصادر وملخصات صوتية."), s("Google AI Studio","https://aistudio.google.com","برمجة وتطبيقات",5,"مجاني جزئي","تجربة وبناء تطبيقات Gemini."), s("v0","https://v0.dev","برمجة وتطبيقات",5,"مجاني جزئي","إنشاء واجهات وتطبيقات."), s("Bolt.new","https://bolt.new","برمجة وتطبيقات",4,"مجاني جزئي","بناء تطبيقات ويب."), s("Lovable","https://lovable.dev","برمجة وتطبيقات",4,"مجاني جزئي","إنشاء منتجات باللغة الطبيعية."), s("Replit","https://replit.com","برمجة وتطبيقات",4,"مجاني جزئي","برمجة وتشغيل ونشر."), s("Cursor","https://cursor.com","برمجة وتطبيقات",5,"مجاني جزئي","محرر برمجة بالذكاء الاصطناعي."), s("Canva AI","https://www.canva.com/ai-image-generator/","صور وفيديو",4,"مجاني جزئي","تصميم وصور وعروض."), s("Adobe Firefly","https://firefly.adobe.com","صور وفيديو",4,"مجاني جزئي","إنشاء وتحرير الصور."), s("Leonardo AI","https://leonardo.ai","صور وفيديو",4,"مجاني جزئي","صور وأصول مرئية."), s("Ideogram","https://ideogram.ai","صور وفيديو",4,"مجاني جزئي","صور مع نص واضح."), s("Runway","https://runwayml.com","صور وفيديو",5,"مجاني جزئي","إنشاء وتحرير فيديو."), s("Kling AI","https://klingai.com","صور وفيديو",5,"مجاني جزئي","فيديو وحركة من النص."), s("ElevenLabs","https://elevenlabs.io","صوت وموسيقى",5,"مجاني جزئي","تحويل النص إلى صوت."), s("Suno","https://suno.com","صوت وموسيقى",5,"مجاني جزئي","إنشاء أغاني وموسيقى."), s("Udio","https://www.udio.com","صوت وموسيقى",4,"مجاني جزئي","توليد موسيقى."), s("Gamma","https://gamma.app","برمجة وتطبيقات",4,"مجاني جزئي","عروض ومستندات وصفحات."), s("Napkin AI","https://napkin.ai","صور وفيديو",3,"مجاني جزئي","رسوم ومخططات."), s("Consensus","https://consensus.app","بحث وتعليم",4,"مجاني جزئي","بحث في الأوراق العلمية."), s("Elicit","https://elicit.com","بحث وتعليم",4,"مجاني جزئي","مساعد بحث علمي.")
+ s("OpenRouter","https://openrouter.ai","محادثة",5,"مجاني جزئي","بوابة تجمع نماذج ومزودين متعددين."),
+ s("Together AI","https://www.together.ai","برمجة وتطبيقات",4,"مجاني جزئي","تشغيل نماذج مفتوحة عبر API."),
+ s("Groq","https://groq.com","برمجة وتطبيقات",5,"مجاني جزئي","استدلال سريع على نماذج مفتوحة."),
+ s("Cerebras","https://www.cerebras.ai","برمجة وتطبيقات",4,"مجاني جزئي","استدلال سريع ونماذج مفتوحة."),
+ s("Fireworks AI","https://fireworks.ai","برمجة وتطبيقات",4,"مجاني جزئي","نماذج توليدية وواجهات API."),
+ s("Replicate","https://replicate.com","برمجة وتطبيقات",4,"مجاني جزئي","تشغيل نماذج مفتوحة ومتخصصة."),
+ s("Blackbox AI","https://www.blackbox.ai","برمجة وتطبيقات",4,"مجاني جزئي","مساعد برمجة وأدوات للمطورين."),
+ s("Phind","https://www.phind.com","برمجة وتطبيقات",4,"مجاني جزئي","بحث ومساعدة برمجية."),
+ s("You.com","https://you.com","بحث وتعليم",4,"مجاني جزئي","بحث ومساعدات متعددة."),
+ s("Krea","https://www.krea.ai","صور وفيديو",4,"مجاني جزئي","إنشاء وتحرير صور وفيديو."),
+ s("Pika","https://pika.art","صور وفيديو",4,"مجاني جزئي","إنشاء فيديو وتأثيرات مرئية."),
+ s("Luma Dream Machine","https://lumalabs.ai/dream-machine","صور وفيديو",5,"مجاني جزئي","توليد فيديو من النص والصور."),
+ s("HeyGen","https://www.heygen.com","صور وفيديو",4,"مجاني جزئي","فيديوهات وأفاتارات بالذكاء الاصطناعي."),
+ s("Descript","https://www.descript.com","صوت وموسيقى",4,"مجاني جزئي","تحرير الصوت والفيديو بالنص."),
+ s("PlayAI","https://play.ai","صوت وموسيقى",4,"مجاني جزئي","صوت ومحادثة صوتية بالذكاء الاصطناعي.")
+ s("Hugging Face Models","https://huggingface.co/models","برمجة وتطبيقات",5,"مجاني","كتالوج ضخم للنماذج المفتوحة والملفات المطلوبة لتشغيلها."),
+ s("Ollama Library","https://ollama.com/library","برمجة وتطبيقات",5,"مجاني","مكتبة النماذج التي يمكن تشغيلها عبر Ollama."),
+ s("LM Studio","https://lmstudio.ai","برمجة وتطبيقات",4,"مجاني","تشغيل النماذج المحلية بواجهة سطح مكتب وواجهة API."),
+ s("llama.cpp","https://github.com/ggml-org/llama.cpp","برمجة وتطبيقات",5,"مجاني","تشغيل نماذج GGUF محليًا مع خادم متوافق مع OpenAI API."),
+ s("ModelScope","https://modelscope.cn/models","برمجة وتطبيقات",4,"مجاني","مستودع نماذج وبيانات وأدوات ذكاء اصطناعي."),
+ s("AI21 Labs","https://www.ai21.com","برمجة وتطبيقات",4,"مجاني جزئي","نماذج وأدوات لغوية عبر API."),
+ s("Writer","https://writer.com","محادثة",4,"مجاني جزئي","منصة نماذج وأدوات ذكاء اصطناعي للأعمال."),
+ s("Character AI","https://character.ai","محادثة",4,"مجاني جزئي","محادثات مع شخصيات ومساعدين مخصصين."),
+ s("DuckDuckGo AI Chat","https://duckduckgo.com/?q=DuckDuckGo+AI+Chat&ia=chat","محادثة",3,"مجاني","محادثة ذكاء اصطناعي ضمن خدمات DuckDuckGo."),
+];

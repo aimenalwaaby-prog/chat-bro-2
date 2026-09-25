@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: chatbro-api
+    runtime: docker
+    healthCheckPath: /api/health
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: VITE_APP_ID
+        sync: false
+      - key: OAUTH_SERVER_URL
+        value: https://api.manus.im
+      - key: BUILT_IN_FORGE_API_URL
+        value: https://forge.manus.ai
+      - key: BUILT_IN_FORGE_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_SITE_URL
+        value: https://chatbro.app
+      - key: OPENROUTER_APP_NAME
+        value: Chat Bro
