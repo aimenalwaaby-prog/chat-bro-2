@@ -21,7 +21,7 @@ function createAuthContext(): { ctx: TrpcContext; clearedCookies: CookieCall[] }
   const ctx: TrpcContext = {
     user,
     req: { protocol: "https", hostname: "api.example.com", headers: {} } as TrpcContext["req"],
-    res: { clearCookie: (name: string, options: Record<string, unknown>) => clearedCookies.push({ name, options }) } as TrpcContext["res"],
+    res: { clearCookie: (name: string, options: Record<string, unknown>) => clearedCookies.push({ name, options }) } as unknown as TrpcContext["res"],
   };
   return { ctx, clearedCookies };
 }

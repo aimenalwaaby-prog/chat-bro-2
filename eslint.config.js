@@ -6,5 +6,8 @@ export default defineConfig([
   expoConfig,
   {
     ignores: ["dist/*"],
+    rules: {
+      "import/namespace": "off",
+    },
   },
 ]);

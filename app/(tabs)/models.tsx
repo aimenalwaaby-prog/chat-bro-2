@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { FlatList, Pressable, Text, TextInput, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
-import { BrandHeader, ModelCard, SectionHeading, StatusBadge } from "@/components/chatbro-ui";
+import { BrandHeader, SectionHeading, StatusBadge } from "@/components/chatbro-ui";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
 import { chatBroModels, filterModels } from "@/shared/chatbro-catalog";
