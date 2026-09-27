@@ -60,7 +60,19 @@ async function startServer() {
   registerOAuthRoutes(app);
 
   const health = (_req: express.Request, res: express.Response) => {
-    res.json({ ok: true, timestamp: Date.now(), service: "chatbro-api", capabilities: { builtInLLM: Boolean(ENV.forgeApiKey), ollama: Boolean(process.env.OLLAMA_BASE_URL), openrouter: Boolean(process.env.OPENROUTER_API_KEY), gateway: Boolean(process.env.MODEL_GATEWAY_BASE_URL || process.env.MODEL_GATEWAYS_JSON) } });
+    res.json({
+      ok: true,
+      timestamp: Date.now(),
+      service: "chatbro-api",
+      capabilities: {
+        builtInLLM: Boolean(ENV.forgeApiKey || process.env.OPENAI_API_KEY),
+        openai: Boolean(process.env.OPENAI_API_KEY),
+        forgeLLM: Boolean(ENV.forgeApiKey),
+        ollama: Boolean(process.env.OLLAMA_BASE_URL),
+        openrouter: Boolean(process.env.OPENROUTER_API_KEY),
+        gateway: Boolean(process.env.MODEL_GATEWAY_BASE_URL || process.env.MODEL_GATEWAYS_JSON),
+      },
+    });
   };
   app.get("/health", health);
   app.get("/api/health", health);
