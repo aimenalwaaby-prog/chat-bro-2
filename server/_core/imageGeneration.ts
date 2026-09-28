@@ -88,9 +88,10 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
   const buffer = Buffer.from(base64Data, "base64");
 
   // Save to S3
-  const { url } = await storagePut(`generated/${Date.now()}.png`, buffer, result.image.mimeType);
+  const stored = await storagePut(`generated/${Date.now()}.png`, buffer, result.image.mimeType);
+  const publicBase = (process.env.PUBLIC_API_BASE_URL ?? "https://chatbro-api.onrender.com").replace(/\/$/, "");
   return {
-    url,
+    url: `${publicBase}${stored.url}`,
   };
 }
 

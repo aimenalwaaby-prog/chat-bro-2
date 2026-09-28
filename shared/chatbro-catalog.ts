@@ -87,6 +87,43 @@ const gateway = (
   sourceUrl: "https://openrouter.ai/collections/free-models",
 });
 
+const anthropic = (
+  name: string,
+  id: string,
+  category: string,
+  icon = "auto-awesome",
+): ChatBroModel => ({
+  name,
+  modelId: `anthropic:${id}`,
+  provider: "Anthropic · خادم Chat Bro",
+  icon,
+  tone: "paid",
+  status: "يتطلب ANTHROPIC_API_KEY على الخادم",
+  limit: "حسب حساب Anthropic",
+  category,
+  requiresKey: true,
+  localOnly: false,
+  runtime: "gateway",
+  supportsVision: true,
+  verified: true,
+  sourceUrl: "https://docs.anthropic.com/en/docs/about-claude/models",
+});
+
+const planned = (name: string, provider: string, category: string, icon = "schedule"): ChatBroModel => ({
+  name,
+  modelId: `planned:${name}`,
+  provider,
+  icon,
+  tone: "trial",
+  status: "قريبًا",
+  limit: "سيُفعّل بعد التحقق من المزود",
+  category,
+  requiresKey: false,
+  localOnly: false,
+  runtime: "cloud",
+  verified: false,
+});
+
 // Cloud IDs are loaded from the live Manus model catalog (not guessed provider aliases).
 export const chatBroModels: ChatBroModel[] = [
   cloud(
@@ -132,6 +169,9 @@ export const chatBroModels: ChatBroModel[] = [
     "paid",
     true,
   ),
+  anthropic("Claude 3.7 Sonnet", "claude-3-7-sonnet-latest", "محادثة"),
+  anthropic("Claude 3.5 Haiku", "claude-3-5-haiku-latest", "محادثة", "bolt"),
+  anthropic("Claude 3 Opus", "claude-3-opus-latest", "برمجة", "code"),
   local("Qwen 3 · 0.6B", "qwen3:0.6b", "محادثة"),
   local("Qwen 3 · 4B", "qwen3:4b", "محادثة"),
   local("Qwen 3 · 8B", "qwen3:8b", "محادثة"),
@@ -176,6 +216,15 @@ export const chatBroModels: ChatBroModel[] = [
   gateway("Laguna XS 2.1", "poolside/laguna-xs-2.1:free", "Poolside · OpenRouter", "برمجة", "code"),
   gateway("Qwen 3.8 27B", "qwen/qwen3.8-27b:free", "Qwen · OpenRouter", "برمجة", "code", true),
   gateway("OpenRouter Free Router", "openrouter/free", "OpenRouter · Free Router", "محادثة", "shuffle"),
+  // نماذج مستهدفة مستقبلًا: تظهر للمستخدم بوضوح ولا تُرسل طلبات قبل اعتماد معرفاتها ومفاتيحها.
+  planned("Claude 4 Sonnet", "Anthropic", "محادثة", "auto-awesome"),
+  planned("Claude 4 Opus", "Anthropic", "برمجة", "code"),
+  planned("Gemini Pro Next", "Google", "محادثة", "bolt"),
+  planned("Grok Next", "xAI", "محادثة", "psychology"),
+  planned("Llama Next", "Meta", "محادثة", "hub"),
+  planned("DeepSeek Next", "DeepSeek", "بحث", "psychology"),
+  planned("Qwen Next", "Qwen", "برمجة", "code"),
+  planned("Mistral Next", "Mistral AI", "محادثة", "auto-awesome"),
 ];
 
 export function filterModels(
@@ -198,6 +247,10 @@ export function getModelByName(name?: string) {
 
 export function isLocalModelId(modelId?: string) {
   return Boolean(modelId && /^(ollama|llama):/.test(modelId));
+}
+
+export function isPlannedModel(modelId?: string) {
+  return Boolean(modelId?.startsWith("planned:"));
 }
 
 export function modelSupportsVision(name?: string) {

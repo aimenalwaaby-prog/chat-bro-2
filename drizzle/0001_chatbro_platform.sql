@@ -37,11 +37,14 @@ CREATE TABLE IF NOT EXISTS `usage_events` (
 CREATE TABLE IF NOT EXISTS `attachments` (
   `id` bigint AUTO_INCREMENT NOT NULL,
   `userId` int NOT NULL,
+  `conversationId` int,
   `messageId` bigint,
   `fileName` varchar(255) NOT NULL,
   `mimeType` varchar(160),
   `storageKey` varchar(512) NOT NULL,
   `sizeBytes` bigint,
+  `status` enum('uploaded','processing','ready','failed') NOT NULL DEFAULT 'uploaded',
+  `extractedText` text,
   `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   INDEX `attachments_user_idx` (`userId`)

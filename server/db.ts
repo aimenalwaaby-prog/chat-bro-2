@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -118,4 +118,44 @@ export async function recordUsage(input: {
     completionTokens: input.completionTokens ?? null,
     requestKind: input.requestKind ?? "chat",
   });
+}
+
+export async function saveMessage(input: { conversationId: number; role: "system" | "user" | "assistant" | "tool"; content: string; model?: string | null }) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const { messages } = await import("../drizzle/schema");
+  const result = await db.insert(messages).values({ ...input, model: input.model ?? null });
+  return Number(result[0].insertId);
+}
+
+export async function listUserConversations(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const { conversations } = await import("../drizzle/schema");
+  return db.select().from(conversations).where(eq(conversations.userId, userId)).orderBy(desc(conversations.updatedAt));
+}
+
+export async function getUserConversation(userId: number, conversationId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const { conversations } = await import("../drizzle/schema");
+  const rows = await db.select().from(conversations).where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId))).limit(1);
+  return rows[0];
+}
+
+export async function listConversationMessages(userId: number, conversationId: number) {
+  const conversation = await getUserConversation(userId, conversationId);
+  if (!conversation) return [];
+  const db = await getDb();
+  if (!db) return [];
+  const { messages } = await import("../drizzle/schema");
+  return db.select().from(messages).where(eq(messages.conversationId, conversationId)).orderBy(messages.createdAt);
+}
+
+export async function createAttachment(input: { userId: number; conversationId?: number; fileName: string; mimeType: string; storageKey: string; sizeBytes: number; status?: "uploaded" | "processing" | "ready" | "failed"; extractedText?: string | null }) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const { attachments } = await import("../drizzle/schema");
+  const result = await db.insert(attachments).values({ ...input, conversationId: input.conversationId ?? null, status: input.status ?? "ready", extractedText: input.extractedText ?? null });
+  return Number(result[0].insertId);
 }

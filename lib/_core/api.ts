@@ -41,11 +41,31 @@ export async function apiCall<T>(endpoint: string, options: RequestInit = {}): P
 
   try {
     console.log("[API] Making request...");
-    const response = await fetch(url, {
-      ...options,
-      headers,
-      credentials: "include",
-    });
+    let response: Response | undefined;
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 60_000);
+      try {
+        response = await fetch(url, {
+          ...options,
+          headers,
+          credentials: "include",
+          signal: controller.signal,
+        });
+        break;
+      } catch (error) {
+        lastError = error;
+        if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 900 * (attempt + 1)));
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+    if (!response) {
+      const error = new Error("تعذر الاتصال بالخادم. تحقق من اتصال الإنترنت وحاول مرة أخرى.");
+      (error as Error & { cause?: unknown }).cause = lastError;
+      throw error;
+    }
 
     console.log("[API] Response status:", response.status, response.statusText);
     const responseHeaders = Object.fromEntries(response.headers.entries());

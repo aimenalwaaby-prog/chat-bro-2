@@ -23,7 +23,30 @@ services:
         sync: false
       - key: OPENROUTER_API_KEY
         sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_BASE_URL
+        value: https://api.anthropic.com
       - key: OPENROUTER_SITE_URL
         value: https://chatbro.app
       - key: OPENROUTER_APP_NAME
         value: Chat Bro
+      - key: PUBLIC_API_BASE_URL
+        value: https://chatbro-api.onrender.com
+      - key: MAX_UPLOAD_BYTES
+        value: "16777216"
+  - type: static_site
+    name: chatbro-web
+    branch: main
+    autoDeploy: yes
+    buildCommand: pnpm install --frozen-lockfile && npx expo export --platform web
+    publishPath: dist
+    envVars:
+      - key: EXPO_PUBLIC_API_BASE_URL
+        value: https://chatbro-api.onrender.com
+      - key: EXPO_PUBLIC_OAUTH_SERVER_URL
+        value: https://api.manus.im
+      - key: EXPO_PUBLIC_OAUTH_PORTAL_URL
+        value: https://manus.im
+      - key: EXPO_PUBLIC_APP_ID
+        value: 77Jvovp6K2UDiC56uFD6LT

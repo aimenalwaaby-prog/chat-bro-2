@@ -17,7 +17,10 @@ const env = {
   appId: process.env.EXPO_PUBLIC_APP_ID ?? DEPLOYED_APP_ID,
   ownerId: process.env.EXPO_PUBLIC_OWNER_OPEN_ID ?? "",
   ownerName: process.env.EXPO_PUBLIC_OWNER_NAME ?? "",
-  apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "",
+  // Production backend for the released Android app. Keep the environment
+  // override for local development and self-hosted deployments.
+  apiBaseUrl:
+    process.env.EXPO_PUBLIC_API_BASE_URL ?? "https://chatbro-api.onrender.com",
   deepLinkScheme: schemeFromBundleId,
 };
 
@@ -29,7 +32,7 @@ export const OWNER_NAME = env.ownerName;
 export const API_BASE_URL = env.apiBaseUrl;
 
 /**
- * Get the API base URL, deriving from current hostname if not set.
+ * Get the API base URL, using Render for production unless explicitly overridden.
  * Metro runs on 8081, API server runs on 3000.
  * URL pattern: https://PORT-sandboxid.region.domain
  */
@@ -39,7 +42,7 @@ export function getApiBaseUrl(): string {
     return API_BASE_URL.replace(/\/$/, "");
   }
 
-  // On web, derive from current hostname by replacing port 8081 with 3000
+  // On web development, derive from current hostname by replacing port 8081 with 3000
   if (
     ReactNative.Platform.OS === "web" &&
     typeof window !== "undefined" &&
@@ -53,8 +56,7 @@ export function getApiBaseUrl(): string {
     }
   }
 
-  // No hard-coded/dead server URL. Web uses same-origin; native builds should set EXPO_PUBLIC_API_BASE_URL.
-  return "";
+  return "https://chatbro-api.onrender.com";
 }
 
 export const SESSION_TOKEN_KEY = "app_session_token";

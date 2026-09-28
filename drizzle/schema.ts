@@ -53,11 +53,14 @@ export const usageEvents = mysqlTable("usage_events", {
 export const attachments = mysqlTable("attachments", {
   id: bigint("id", { mode: "number" }).autoincrement().primaryKey(),
   userId: int("userId").notNull(),
+  conversationId: int("conversationId"),
   messageId: bigint("messageId", { mode: "number" }),
   fileName: varchar("fileName", { length: 255 }).notNull(),
   mimeType: varchar("mimeType", { length: 160 }),
   storageKey: varchar("storageKey", { length: 512 }).notNull(),
   sizeBytes: bigint("sizeBytes", { mode: "number" }),
+  status: mysqlEnum("status", ["uploaded", "processing", "ready", "failed"]).default("uploaded").notNull(),
+  extractedText: text("extractedText"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

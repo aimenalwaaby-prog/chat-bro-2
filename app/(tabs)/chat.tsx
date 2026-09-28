@@ -4,6 +4,8 @@ import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import * as Speech from "expo-speech";
+import * as FileSystem from "expo-file-system/legacy";
+import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from "expo-audio";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -24,13 +26,16 @@ import { ScreenContainer } from "@/components/screen-container";
 import { BrandHeader, StatusBadge } from "@/components/chatbro-ui";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
-import { chatBroModels, getModelByName } from "@/shared/chatbro-catalog";
+import { chatBroModels, getModelByName, isPlannedModel } from "@/shared/chatbro-catalog";
 
 type Attachment = {
   uri: string;
   name: string;
   mimeType: string;
   kind: "image" | "file";
+  base64?: string;
+  remoteUrl?: string;
+  extractedText?: string;
 };
 type Message = {
   id: string;
@@ -52,10 +57,8 @@ const welcome = (model?: string): Message => ({
 
 export default function ChatScreen() {
   const colors = useColors();
-  const params = useLocalSearchParams<{ prompt?: string; model?: string }>();
-  const initialModel = chatBroModels.some((item) => item.name === params.model)
-    ? params.model!
-    : "";
+  const params = useLocalSearchParams<{ prompt?: string; model?: string; directModel?: string }>();
+  const initialModel = params.model ?? "";
   const [selectedModel, setSelectedModel] = useState(initialModel);
   const [messages, setMessages] = useState<Message[]>([
     welcome(initialModel || undefined),
@@ -67,6 +70,11 @@ export default function ChatScreen() {
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [modelsOpen, setModelsOpen] = useState(false);
   const completeChat = trpc.chat.complete.useMutation();
+  const uploadFile = trpc.attachments.upload.useMutation();
+  const generateImage = trpc.images.generate.useMutation();
+  const transcribe = trpc.voice.transcribe.useMutation();
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState = useAudioRecorderState(recorder);
   const historyModel = selectedModel || "Chat Bro";
   const selectedCatalogModel = getModelByName(selectedModel);
 
@@ -129,6 +137,7 @@ export default function ChatScreen() {
           name: a.fileName ?? "image.jpg",
           mimeType: a.mimeType ?? "image/jpeg",
           kind: "image",
+          base64: a.base64 ?? undefined,
         },
       ]);
     }
@@ -154,6 +163,32 @@ export default function ChatScreen() {
           kind: "file",
         },
       ]);
+    }
+  };
+  const uploadAttachment = async (attachment: Attachment) => {
+    const base64 = attachment.base64 ?? await FileSystem.readAsStringAsync(attachment.uri, { encoding: FileSystem.EncodingType.Base64 });
+    const result = await uploadFile.mutateAsync({ name: attachment.name, mimeType: attachment.mimeType, base64 });
+    return { ...attachment, remoteUrl: result.url, extractedText: result.extractedText ?? undefined };
+  };
+  const toggleRecording = async () => {
+    try {
+      if (recorderState.isRecording) {
+        await recorder.stop();
+        if (recorder.uri) {
+          const base64 = await FileSystem.readAsStringAsync(recorder.uri, { encoding: FileSystem.EncodingType.Base64 });
+          const uploaded = await uploadFile.mutateAsync({ name: "voice.m4a", mimeType: "audio/mp4", base64 });
+          const result = await transcribe.mutateAsync({ audioUrl: uploaded.url, language: "ar" });
+          setInput((current) => `${current}${current ? " " : ""}${result.text}`);
+        }
+      } else {
+        const permission = await requestRecordingPermissionsAsync();
+        if (!permission.granted) { Alert.alert("الصلاحية مطلوبة", "اسمح للتطبيق باستخدام الميكروفون."); return; }
+        await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+        await recorder.prepareToRecordAsync();
+        recorder.record();
+      }
+    } catch (error) {
+      Alert.alert("تعذر تسجيل الصوت", error instanceof Error ? error.message : "حاول مرة أخرى.");
     }
   };
   const copyMessage = async (text: string) => {
@@ -183,14 +218,19 @@ export default function ChatScreen() {
   const sendMessage = async () => {
     const text = input.trim();
     if ((!text && attachments.length === 0) || isTyping) return;
-    const promptParts = attachments.map((a) =>
-      a.kind === "image"
-        ? { type: "image_url" as const, image_url: { url: a.uri } }
-        : {
-            type: "file_url" as const,
-            file_url: { url: a.uri, mime_type: a.mimeType },
-          },
-    );
+    setIsTyping(true);
+    let uploadedAttachments: Attachment[];
+    try {
+      uploadedAttachments = await Promise.all(attachments.map(uploadAttachment));
+    } catch (error) {
+      setIsTyping(false);
+      Alert.alert("فشل رفع المرفق", error instanceof Error ? error.message : "تحقق من الملف وحاول مرة أخرى.");
+      return;
+    }
+    const promptParts = uploadedAttachments.flatMap((a) => [
+      ...(a.extractedText ? [{ type: "text" as const, text: `محتوى الملف ${a.name}:\n${a.extractedText}` }] : []),
+      a.kind === "image" ? { type: "image_url" as const, image_url: { url: a.remoteUrl ?? a.uri } } : { type: "file_url" as const, file_url: { url: a.remoteUrl ?? a.uri, mime_type: a.mimeType } },
+    ]);
     const userMessage: Message = {
       id: `${Date.now()}`,
       role: "user",
@@ -199,15 +239,24 @@ export default function ChatScreen() {
         hour: "2-digit",
         minute: "2-digit",
       }),
-      attachments,
+      attachments: uploadedAttachments,
     };
     setMessages((current) => [...current, userMessage]);
     setInput("");
     setAttachments([]);
-    setIsTyping(true);
+    if (/^\/image\s+/i.test(text)) {
+      try {
+        const result = await generateImage.mutateAsync({ prompt: text.replace(/^\/image\s+/i, "") });
+        setMessages((current) => [...current, { id: `${Date.now()}-image`, role: "assistant", text: "تم إنشاء الصورة.", time: "الآن", attachments: [{ uri: result.url ?? "", remoteUrl: result.url, name: "generated.png", mimeType: "image/png", kind: "image" }] }]);
+      } catch (error) {
+        setMessages((current) => [...current, { id: `${Date.now()}-image-error`, role: "assistant", text: error instanceof Error ? error.message : "تعذر إنشاء الصورة.", time: "الآن" }]);
+      }
+      setIsTyping(false);
+      return;
+    }
     try {
       const response = await completeChat.mutateAsync({
-        model: selectedCatalogModel?.modelId || undefined,
+        model: params.directModel || selectedCatalogModel?.modelId || undefined,
         messages: [...messages, userMessage].map((message, index) =>
           index === messages.length
             ? {
@@ -229,13 +278,22 @@ export default function ChatScreen() {
           time: "الآن",
         },
       ]);
-    } catch {
+    } catch (error) {
+      console.error("[ChatBro] chat request failed:", error);
+      const message = error instanceof Error ? error.message.toLowerCase() : "";
+      const friendly = message.includes("abort") || message.includes("timeout")
+        ? "انتهت مهلة الاتصال بالنموذج. حاول مرة أخرى."
+        : message.includes("api") && message.includes("key")
+          ? "المزود المضمن غير مفعّل حاليًا على الخادم. لا تحتاج إلى إدخال أي مفتاح داخل التطبيق؛ يلزم ضبطه في Environment Variables على الخادم فقط."
+          : message.includes("quota") || message.includes("limit")
+            ? "تم الوصول إلى الحد المسموح لهذا المزود."
+            : "تعذر الاتصال بالخادم. تحقق من اتصال الإنترنت وحاول مرة أخرى.";
       setMessages((current) => [
         ...current,
         {
           id: `${Date.now()}-offline`,
           role: "assistant",
-          text: "تعذر الوصول إلى الخادم أو أن النموذج لا يدعم هذا النوع من المرفقات.",
+          text: friendly,
           time: "الآن",
         },
       ]);
@@ -288,13 +346,15 @@ export default function ChatScreen() {
                 {chatBroModels.map((model) => (
                   <Pressable
                     key={model.name}
+                    disabled={isPlannedModel(model.modelId)}
                     onPress={() => setSelectedModel(model.name)}
                     style={({ pressed }) => [
                       {
                         backgroundColor: model.name === selectedModel ? colors.primary : colors.surface,
                         borderColor: model.name === selectedModel ? colors.primary : colors.border,
                       },
-                      pressed && { opacity: 0.72 },
+                        pressed && { opacity: 0.72 },
+                        isPlannedModel(model.modelId) && { opacity: 0.58 },
                     ]}
                     className="min-h-[52px] flex-row-reverse items-center rounded-xl border px-3 py-2"
                   >
@@ -302,6 +362,10 @@ export default function ChatScreen() {
                     <View className="mr-2 flex-1">
                       <Text numberOfLines={1} className="text-right text-[11px] font-bold text-foreground">{model.name}</Text>
                       <Text numberOfLines={1} className="text-right text-[9px] text-muted">{model.provider} · {model.category}</Text>
+                      <View className="mt-1 flex-row-reverse items-center gap-1">
+                        <StatusBadge label={model.status} tone={model.tone} />
+                        {model.requiresKey ? <Text className="text-[9px] text-muted">مفتاح API</Text> : null}
+                      </View>
                     </View>
                     {model.name === selectedModel ? <MaterialIcons name="check-circle" size={17} color="#062034" /> : null}
                   </Pressable>
@@ -334,14 +398,14 @@ export default function ChatScreen() {
                 {item.attachments?.map((a) =>
                   a.kind === "image" ? (
                     <Image
-                      key={a.uri}
-                      source={{ uri: a.uri }}
+                      key={a.remoteUrl ?? a.uri}
+                      source={{ uri: a.remoteUrl ?? a.uri }}
                       className="mb-2 h-40 w-40 rounded-xl"
                       resizeMode="cover"
                     />
                   ) : (
                     <Text
-                      key={a.uri}
+                      key={a.remoteUrl ?? a.uri}
                       className="mb-2 text-right text-[11px] font-semibold text-primary"
                     >
                       📎 {a.name}
@@ -457,6 +521,13 @@ export default function ChatScreen() {
               className="h-10 w-10 items-center justify-center rounded-[14px]"
             >
               <MaterialIcons name="attach-file" size={20} color="#0787B4" />
+            </Pressable>
+            <Pressable
+              onPress={() => void toggleRecording()}
+              style={({ pressed }) => [{ backgroundColor: recorderState.isRecording ? "#FFD8D8" : "#E6F8FD" }, pressed && { opacity: 0.7 }]}
+              className="h-10 w-10 items-center justify-center rounded-[14px]"
+            >
+              <MaterialIcons name={recorderState.isRecording ? "stop" : "mic"} size={20} color={recorderState.isRecording ? "#C62828" : "#0787B4"} />
             </Pressable>
             <TextInput
               value={input}

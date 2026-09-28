@@ -61,10 +61,9 @@ const config: ExpoConfig = {
       backgroundImage: "./assets/images/android-icon-background.png",
       monochromeImage: "./assets/images/android-icon-monochrome.png",
     },
-    edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
-    permissions: ["POST_NOTIFICATIONS"],
+    permissions: ["POST_NOTIFICATIONS", "RECORD_AUDIO"],
     intentFilters: [
       {
         action: "VIEW",
@@ -86,6 +85,9 @@ const config: ExpoConfig = {
   },
   plugins: [
     "expo-router",
+    "expo-asset",
+    "expo-font",
+    "expo-web-browser",
     [
       "expo-audio",
       {
@@ -115,7 +117,8 @@ const config: ExpoConfig = {
       "expo-build-properties",
       {
         android: {
-          buildArchs: ["arm64-v8a"],
+            // Include both ABIs for compatibility with older XCover variants.
+            buildArchs: ["armeabi-v7a", "arm64-v8a"],
           minSdkVersion: 24,
         },
       },

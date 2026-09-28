@@ -31,12 +31,14 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+  const requestCounts = new Map<string, { count: number; resetAt: number }>();
 
   // Enable CORS for all routes - reflect the request origin to support credentials
   app.use((req, res, next) => {
     const origin = req.headers.origin;
-    if (origin) {
+    if (origin && (ENV.allowedOrigins.length === 0 || ENV.allowedOrigins.includes(origin))) {
       res.header("Access-Control-Allow-Origin", origin);
+      res.header("Vary", "Origin");
     }
     res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
     res.header(
@@ -56,20 +58,31 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
+  app.use((req, res, next) => {
+    const key = req.ip ?? "unknown";
+    const now = Date.now();
+    const current = requestCounts.get(key);
+    if (!current || current.resetAt <= now) requestCounts.set(key, { count: 1, resetAt: now + 60_000 });
+    else if (current.count++ > 120) {
+      res.status(429).json({ ok: false, error: "تم تجاوز معدل الطلبات. حاول بعد دقيقة." });
+      return;
+    }
+    next();
+  });
+
   registerStorageProxy(app);
   registerOAuthRoutes(app);
 
   const health = (_req: express.Request, res: express.Response) => {
-    res.json({
+    res.status(200).json({
       ok: true,
       timestamp: Date.now(),
       service: "chatbro-api",
       capabilities: {
-        builtInLLM: Boolean(ENV.forgeApiKey || process.env.OPENAI_API_KEY),
-        openai: Boolean(process.env.OPENAI_API_KEY),
-        forgeLLM: Boolean(ENV.forgeApiKey),
+        builtInLLM: Boolean(ENV.forgeApiKey),
         ollama: Boolean(process.env.OLLAMA_BASE_URL),
         openrouter: Boolean(process.env.OPENROUTER_API_KEY),
+        anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
         gateway: Boolean(process.env.MODEL_GATEWAY_BASE_URL || process.env.MODEL_GATEWAYS_JSON),
       },
     });
@@ -84,6 +97,17 @@ async function startServer() {
       createContext,
     }),
   );
+
+  // Return JSON for unexpected routes so mobile clients never receive an HTML error page.
+  app.use((_req, res) => {
+    res.status(404).json({ ok: false, error: "المسار غير موجود" });
+  });
+
+  app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error("[api] unhandled request error:", error);
+    if (res.headersSent) return;
+    res.status(500).json({ ok: false, error: "حدث خطأ في الخادم. حاول مرة أخرى لاحقًا." });
+  });
 
   const preferredPort = parseInt(process.env.PORT || "3000");
   const port = process.env.NODE_ENV === "production" ? preferredPort : await findAvailablePort(preferredPort);

@@ -12,6 +12,7 @@ export function useAuth(options?: UseAuthOptions) {
   const [error, setError] = useState<Error | null>(null);
 
   const fetchUser = useCallback(async () => {
+    let cached: Auth.User | null = null;
     try {
       setLoading(true);
       setError(null);
@@ -39,6 +40,13 @@ export function useAuth(options?: UseAuthOptions) {
         setUser(null);
         return;
       }
+      // Hydrate the last verified profile before contacting the API. This keeps
+      // the native app signed in while a sleeping/unreachable backend wakes up.
+      // The session is only removed below when the API explicitly returns 401/403.
+      cached = await Auth.getUserInfo();
+      if (cached) {
+        setUser({ ...cached, lastSignedIn: new Date(cached.lastSignedIn) });
+      }
       // On Android, SecureStore may keep the token while the cached profile is
       // missing or stale. Validate the token against the real API before
       // deciding that the user is signed out.
@@ -60,11 +68,10 @@ export function useAuth(options?: UseAuthOptions) {
         setUser(null);
       }
     } catch (err) {
-      const cached = await Auth.getUserInfo();
       setError(err instanceof Error ? err : new Error("تعذر الاتصال بخادم المصادقة"));
       // Keep a previously verified profile visible during a temporary outage.
       // Do not destroy a valid local session merely because the network blinked.
-      setUser(cached);
+      if (cached) setUser({ ...cached, lastSignedIn: new Date(cached.lastSignedIn) });
     } finally {
       setLoading(false);
     }

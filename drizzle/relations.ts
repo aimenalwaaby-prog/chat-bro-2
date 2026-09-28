@@ -9,4 +9,5 @@ export const userRelations = relations(users, ({ many }) => ({
 
 export const conversationRelations = relations(conversations, ({ many }) => ({
   messages: many(messages),
+  attachments: many(attachments),
 }));

@@ -35,7 +35,8 @@ export function createTRPCClient() {
           for (let attempt = 0; attempt < 3; attempt += 1) {
             try {
               const controller = new AbortController();
-              const timeout = setTimeout(() => controller.abort(), 35_000);
+              // Render free services can need time to wake from sleep.
+              const timeout = setTimeout(() => controller.abort(), 60_000);
               try {
                 return await fetch(url, {
                   ...options,
@@ -47,7 +48,7 @@ export function createTRPCClient() {
               }
             } catch (error) {
               lastError = error;
-              if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+              if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 900 * (attempt + 1)));
             }
           }
           throw lastError instanceof Error ? lastError : new Error("تعذر الاتصال بالخادم");
