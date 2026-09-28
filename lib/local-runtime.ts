@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Device from "expo-device";
-import { initLlama, loadLlamaModelInfo } from "llama.rn";
+import { Platform } from "react-native";
 
 export type LocalModelDefinition = {
   id: string;
@@ -76,6 +76,11 @@ export const LOCAL_MODELS: LocalModelDefinition[] = [
 
 let contexts = new Map<string, any>();
 
+async function getLlamaModule() {
+  if (Platform.OS === "web") throw new Error("النماذج المحلية تعمل على Android فقط.");
+  return import("llama.rn");
+}
+
 export function getDeviceProfile() {
   const totalMemoryGb = Device.totalMemory ? Device.totalMemory / 1024 ** 3 : 4;
   const is64BitAndroid = true; // The shipped Android target is arm64; runtime performs final native compatibility checks.
@@ -149,6 +154,7 @@ async function getContext(model: InstalledLocalModel) {
   if (existing) return existing;
   const ram = getDeviceProfile().totalMemoryGb;
   const nCtx = ram <= 4 ? 1024 : ram <= 6 ? 1536 : 2048;
+  const { initLlama } = await getLlamaModule();
   const context = await initLlama({
     model: `file://${model.path}`,
     use_mlock: false,
@@ -161,6 +167,7 @@ async function getContext(model: InstalledLocalModel) {
 }
 
 export async function inspectLocalModel(path: string) {
+  const { loadLlamaModelInfo } = await getLlamaModule();
   return loadLlamaModelInfo(`file://${path}`);
 }
 
