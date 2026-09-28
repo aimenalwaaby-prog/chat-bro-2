@@ -41,6 +41,41 @@ export type GenerateImageResponse = {
 };
 
 export async function generateImage(options: GenerateImageOptions): Promise<GenerateImageResponse> {
+  if (!ENV.forgeApiKey && process.env.OPENROUTER_API_KEY) {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "HTTP-Referer": process.env.OPENROUTER_SITE_URL ?? "https://chatbro.app",
+        "X-Title": process.env.OPENROUTER_APP_NAME ?? "Chat Bro",
+      },
+      body: JSON.stringify({
+        model: options.model ?? process.env.OPENROUTER_IMAGE_MODEL ?? "google/gemini-2.5-flash-image",
+        modalities: ["text", "image"],
+        messages: [{ role: "user", content: options.prompt }],
+      }),
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw new Error(`OpenRouter image request failed (${response.status} ${response.statusText})${detail ? `: ${detail.slice(0, 500)}` : ""}`);
+    }
+    const payload = (await response.json()) as {
+      choices?: Array<{ message?: { images?: Array<{ image_url?: { url?: string } }>; content?: string | Array<{ type?: string; image_url?: { url?: string } }> } }>;
+    };
+    const message = payload.choices?.[0]?.message;
+    const content = Array.isArray(message?.content) ? message.content : [];
+    const imageUrl = message?.images?.[0]?.image_url?.url ?? content.find((part) => part.type === "image_url")?.image_url?.url;
+    if (!imageUrl) throw new Error("OpenRouter لم يُرجع صورة لهذا النموذج. اختر نموذجًا يدعم إخراج الصور.");
+    if (/^https?:\/\//.test(imageUrl)) return { url: imageUrl };
+    const match = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
+    if (!match) throw new Error("صيغة الصورة الناتجة من OpenRouter غير مدعومة.");
+    const stored = await storagePut(`generated/${Date.now()}.png`, Buffer.from(match[2], "base64"), match[1]);
+    const publicBase = (process.env.PUBLIC_API_BASE_URL ?? "https://chatbro-api.onrender.com").replace(/\/$/, "");
+    return { url: `${publicBase}${stored.url}` };
+  }
   if (!ENV.forgeApiUrl) {
     throw new Error("BUILT_IN_FORGE_API_URL is not configured");
   }
