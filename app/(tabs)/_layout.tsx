@@ -1,6 +1,8 @@
 import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Platform } from "react-native";
+import { useEffect, useState } from "react";
+import { listInstalledLocalModels } from "@/lib/local-runtime";
 
 import { HapticTab } from "@/components/haptic-tab";
 import { IconSymbol } from "@/components/ui/icon-symbol";
@@ -11,6 +13,8 @@ export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const bottomPadding = Platform.OS === "web" ? 10 : Math.max(insets.bottom, 8);
   const tabBarHeight = 62 + bottomPadding;
+  const [hasLocalModels, setHasLocalModels] = useState(false);
+  useEffect(() => { let active = true; listInstalledLocalModels().then((items) => active && setHasLocalModels(items.length > 0)); return () => { active = false; }; }, []);
 
   return (
     <Tabs
@@ -66,9 +70,17 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="local-chat"
+        options={{
+          href: hasLocalModels ? "/local-chat" : null,
+          title: "محادثة محلية",
+          tabBarIcon: ({ color }) => <IconSymbol size={22} name="bubble.left.and.bubble.right.fill" color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="local-models"
         options={{
-          title: "محلي",
+          title: hasLocalModels ? "محلي" : "تنزيل محلي",
           tabBarIcon: ({ color }) => (
             <IconSymbol
               size={22}

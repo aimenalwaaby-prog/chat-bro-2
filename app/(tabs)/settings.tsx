@@ -131,7 +131,7 @@ export default function SettingsScreen() {
             </View>
             <MaterialIcons name={profile ? "verified-user" : "account-circle"} size={19} color="#8FF4FF" />
           </View>
-          <Text className="mt-4 text-right text-[10px] leading-4 text-[#D8FAFF]">لا يحتاج الملف المحلي إلى Manus أو Google أو كلمة مرور. تُحفظ بياناته على هذا الجهاز فقط.</Text>
+          <Text className="mt-4 text-right text-[10px] leading-4 text-[#D8FAFF]">بيانات الملف الشخصي اختيارية، وتُحفظ محليًا على هذا الجهاز فقط.</Text>
           <Pressable onPress={profile ? startEditing : () => setEditing(true)} className="mt-4 rounded-2xl bg-white px-3 py-2.5">
             <Text className="text-center text-[11px] font-bold text-[#0C7FA9]">{profile ? "تعديل الملف الشخصي" : "إنشاء ملف شخصي محلي"}</Text>
           </Pressable>
@@ -170,8 +170,6 @@ export default function SettingsScreen() {
         </View>
 
         <View className="mt-8"><SectionHeading title="التفضيلات" /><View className="overflow-hidden rounded-[23px] border bg-surface" style={{ borderColor: colors.border }}><View className="flex-row-reverse items-center px-4 py-4"><View className="h-9 w-9 items-center justify-center rounded-[13px] bg-[#E8F5F9]"><MaterialIcons name="notifications-none" size={19} color="#1589AE" /></View><View className="mr-3 flex-1"><Text className="text-[13px] font-bold text-foreground text-right">الإشعارات</Text><Text className="mt-1 text-[10px] text-muted text-right">تنبيهات المهام والنتائج</Text></View><Switch value={notifications} onValueChange={setNotifications} trackColor={{ false: "#DCE7EC", true: "#8BEAF7" }} thumbColor={notifications ? "#0E9BC6" : "#FFFFFF"} /></View><View className="flex-row-reverse items-center border-t px-4 py-4" style={{ borderTopColor: colors.border }}><MaterialIcons name="security" size={19} color="#1589AE" /><Text className="mr-3 flex-1 text-[12px] text-muted text-right">المفاتيح الحساسة تبقى على الخادم ولا تُضمّن في التطبيق.</Text></View></View></View>
-
-        <View className="mt-8"><SectionHeading title="عن Chat Bro" /><View className="rounded-[23px] border bg-surface p-4" style={{ borderColor: colors.border }}><View className="flex-row-reverse items-center justify-between"><Text className="text-[12px] font-semibold text-foreground">الإصدار</Text><Text className="text-[11px] text-muted">0.3.1</Text></View><Text className="mt-5 text-[10px] leading-4 text-muted text-right">الملف الشخصي المحلي اختياري ومستقل عن Manus. تسجيل الدخول الخارجي لم يعد مطلوبًا لاستخدام المحادثات المحلية أو الخادم.</Text></View></View>
       </ScrollView>
     </ScreenContainer>
   );

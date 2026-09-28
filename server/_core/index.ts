@@ -80,7 +80,6 @@ async function startServer() {
       service: "chatbro-api",
       capabilities: {
         builtInLLM: Boolean(ENV.forgeApiKey),
-        ollama: Boolean(process.env.OLLAMA_BASE_URL),
         openrouter: Boolean(process.env.OPENROUTER_API_KEY),
         anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
         gateway: Boolean(process.env.MODEL_GATEWAY_BASE_URL || process.env.MODEL_GATEWAYS_JSON),

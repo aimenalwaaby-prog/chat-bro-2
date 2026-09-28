@@ -26,7 +26,8 @@ import { ScreenContainer } from "@/components/screen-container";
 import { BrandHeader, StatusBadge } from "@/components/chatbro-ui";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
-import { chatBroModels, getModelByName, isPlannedModel } from "@/shared/chatbro-catalog";
+import { chatBroModels, getModelByName, isPlannedModel, type ChatBroModel } from "@/shared/chatbro-catalog";
+import { listInstalledLocalModels, type InstalledLocalModel } from "@/lib/local-runtime";
 
 type Attachment = {
   uri: string;
@@ -69,6 +70,8 @@ export default function ChatScreen() {
   const [loadedHistory, setLoadedHistory] = useState("");
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [modelsOpen, setModelsOpen] = useState(false);
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [localModels, setLocalModels] = useState<InstalledLocalModel[]>([]);
   const completeChat = trpc.chat.complete.useMutation();
   const uploadFile = trpc.attachments.upload.useMutation();
   const generateImage = trpc.images.generate.useMutation();
@@ -77,6 +80,16 @@ export default function ChatScreen() {
   const recorderState = useAudioRecorderState(recorder);
   const historyModel = selectedModel || "Chat Bro";
   const selectedCatalogModel = getModelByName(selectedModel);
+  const openRouterModels = trpc.models.openRouter.useQuery(undefined, { staleTime: 60_000, retry: 2 });
+  const dynamicOpenRouterModels = useMemo<ChatBroModel[]>(() => (openRouterModels.data?.models ?? []).map((model): ChatBroModel => ({
+    name: model.name, modelId: `openrouter:${model.id}`, provider: "OpenRouter", icon: "hub",
+    tone: model.prompt === "0" && model.completion === "0" ? "full" : "limited",
+    status: model.prompt === "0" && model.completion === "0" ? "مجاني" : "متاح",
+    limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب المزود", category: "OpenRouter", requiresKey: true, localOnly: false, runtime: "gateway" as const, verified: true,
+  })), [openRouterModels.data]);
+  const cloudChatModels = useMemo(() => [...chatBroModels.filter((m) => !m.localOnly), ...dynamicOpenRouterModels.filter((m) => !chatBroModels.some((x) => x.modelId === m.modelId))], [dynamicOpenRouterModels]);
+  const selectedRuntimeModel = selectedCatalogModel?.modelId ?? cloudChatModels.find((m) => m.name === selectedModel)?.modelId;
+  useEffect(() => { let active = true; listInstalledLocalModels().then((items) => active && setLocalModels(items)); return () => { active = false; }; }, []);
 
   useEffect(() => {
     setLoadedHistory("");
@@ -219,9 +232,10 @@ export default function ChatScreen() {
     const text = input.trim();
     if ((!text && attachments.length === 0) || isTyping) return;
     setIsTyping(true);
+    const isLocalConversation = Boolean(selectedModel && localModels.some((m) => m.name === selectedModel));
     let uploadedAttachments: Attachment[];
     try {
-      uploadedAttachments = await Promise.all(attachments.map(uploadAttachment));
+      uploadedAttachments = isLocalConversation ? attachments : await Promise.all(attachments.map(uploadAttachment));
     } catch (error) {
       setIsTyping(false);
       Alert.alert("فشل رفع المرفق", error instanceof Error ? error.message : "تحقق من الملف وحاول مرة أخرى.");
@@ -255,8 +269,20 @@ export default function ChatScreen() {
       return;
     }
     try {
+      if (selectedModel && localModels.some((m) => m.name === selectedModel)) {
+        const local = localModels.find((m) => m.name === selectedModel)!;
+        const { completeLocal } = await import("@/lib/local-runtime");
+        const reply = await completeLocal(local, [
+          { role: "system", content: "أنت مساعد محلي داخل Chat Bro. لا تدّعي الوصول إلى الإنترنت. إذا احتاج السؤال معلومات حديثة فاذكر ذلك بوضوح." },
+          ...messages.map((m) => ({ role: m.role, content: m.text })),
+          { role: "user", content: text || "حلل المرفق." },
+        ]);
+        setMessages((current) => [...current, { id: `${Date.now()}-local`, role: "assistant", text: reply || "لم يُنتج النموذج ردًا.", time: "الآن" }]);
+        return;
+      }
       const response = await completeChat.mutateAsync({
-        model: params.directModel || selectedCatalogModel?.modelId || undefined,
+        model: params.directModel || selectedRuntimeModel || undefined,
+        useWebSearch: webSearchEnabled,
         messages: [...messages, userMessage].map((message, index) =>
           index === messages.length
             ? {
@@ -334,7 +360,7 @@ export default function ChatScreen() {
           {modelsOpen ? (
             <View className="mt-3 rounded-2xl border p-2" style={{ borderColor: colors.border, backgroundColor: colors.background }}>
               <View className="flex-row-reverse items-center justify-between px-2 pb-2">
-                <Text className="text-right text-[10px] font-bold text-muted">{chatBroModels.length} نموذجًا</Text>
+                <View className="flex-row-reverse items-center justify-between w-full"><Text className="text-right text-[10px] font-bold text-muted">{cloudChatModels.length} سحابي · {localModels.length} محلي</Text><Text className="text-right text-[9px] text-muted">🌐 البحث الحديث مفعّل للمسار السحابي</Text></View>
                 <Text className="text-right text-[10px] text-muted">اسحب للأعلى والأسفل</Text>
               </View>
               <ScrollView
@@ -343,11 +369,19 @@ export default function ChatScreen() {
                 contentContainerStyle={{ gap: 6, paddingBottom: 2 }}
                 style={{ maxHeight: 310 }}
               >
-                {chatBroModels.map((model) => (
+                {localModels.length ? <><Text className="px-2 pt-2 pb-1 text-right text-[10px] font-extrabold text-primary">📱 النماذج المحلية</Text>{localModels.map((model) => (
+                  <Pressable key={`local-${model.id}`} onPress={() => { setSelectedModel(model.name); setModelsOpen(false); }} className="min-h-[52px] flex-row-reverse items-center rounded-xl border px-3 py-2" style={{ backgroundColor: model.name === selectedModel ? colors.primary : colors.surface, borderColor: model.name === selectedModel ? colors.primary : colors.border }}>
+                    <MaterialIcons name="smart-toy" size={17} color={model.name === selectedModel ? "#062034" : colors.muted} />
+                    <View className="mr-2 flex-1"><Text numberOfLines={1} className="text-right text-[11px] font-bold text-foreground">{model.name}</Text><Text className="text-right text-[9px] text-muted">محلي على الجهاز · بلا خادم</Text></View>
+                    {model.name === selectedModel ? <MaterialIcons name="check-circle" size={17} color="#062034" /> : null}
+                  </Pressable>
+                ))}</> : null}
+                <Text className="px-2 pt-2 pb-1 text-right text-[10px] font-extrabold text-primary">☁️ النماذج السحابية</Text>
+                {cloudChatModels.map((model) => (
                   <Pressable
                     key={model.name}
                     disabled={isPlannedModel(model.modelId)}
-                    onPress={() => setSelectedModel(model.name)}
+                    onPress={() => { setSelectedModel(model.name); setModelsOpen(false); }}
                     style={({ pressed }) => [
                       {
                         backgroundColor: model.name === selectedModel ? colors.primary : colors.surface,
@@ -501,6 +535,16 @@ export default function ChatScreen() {
               ))}
             </ScrollView>
           ) : null}
+          <Pressable
+            onPress={() => setWebSearchEnabled((enabled) => !enabled)}
+            style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1, alignSelf: "flex-end" }]}
+            className="mb-2 flex-row-reverse items-center gap-1 rounded-full border px-3 py-1.5"
+          >
+            <MaterialIcons name="language" size={15} color={webSearchEnabled ? colors.primary : colors.muted} />
+            <Text className="text-[10px] font-bold" style={{ color: webSearchEnabled ? colors.primary : colors.muted }}>
+              {webSearchEnabled ? "بحث الويب مفعّل" : "بحث الويب"}
+            </Text>
+          </Pressable>
           <View className="flex-row-reverse items-end gap-2">
             <Pressable
               onPress={addImage}

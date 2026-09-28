@@ -20,94 +20,8 @@ const errorForClient = (error: unknown) => {
   if (/timeout|abort|timed out/i.test(text)) return "انتهت مهلة المزود. حاول مرة أخرى.";
   return text.length < 180 ? text : "تعذر تنفيذ الطلب على الخادم.";
 };
-const ollamaBase = () =>
-  (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/$/, "");
-const llamaBase = () =>
-  (process.env.LLAMA_CPP_BASE_URL ?? "http://127.0.0.1:8080").replace(
-    /\/$/,
-    "",
-  );
-async function completeWithOllama(model: string, messages: SimpleMessage[]) {
-  const response = await fetch(`${ollamaBase()}/api/chat`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      model: model.replace(/^ollama:/, ""),
-      messages,
-      stream: false,
-      options: { num_predict: 1200, temperature: 0.35, repeat_penalty: 1.18 },
-    }),
-    signal: AbortSignal.timeout(90_000),
-  });
-  if (!response.ok)
-    throw new Error(`Ollama request failed: ${response.status}`);
-  const payload = (await response.json()) as {
-    message?: { content?: string };
-    model?: string;
-  };
-  return {
-    content: payload.message?.content ?? "تعذر قراءة رد النموذج المحلي.",
-    model: payload.model ?? model,
-    usage: null,
-  };
-}
-async function completeWithLlamaCpp(model: string, messages: SimpleMessage[]) {
-  const response = await fetch(`${llamaBase()}/v1/chat/completions`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      model: model.replace(/^llama:/, ""),
-      messages,
-      max_tokens: 1200,
-      temperature: 0.35,
-    }),
-    signal: AbortSignal.timeout(60_000),
-  });
-  if (!response.ok)
-    throw new Error(`llama.cpp request failed: ${response.status}`);
-  const payload = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-    model?: string;
-  };
-  return {
-    content:
-      payload.choices?.[0]?.message?.content ?? "تعذر قراءة رد llama.cpp.",
-    model: payload.model ?? model,
-    usage: null,
-  };
-}
-async function pullOllamaModel(model: string) {
-  const response = await fetch(`${ollamaBase()}/api/pull`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      model: model.replace(/^ollama:/, ""),
-      stream: false,
-    }),
-    signal: AbortSignal.timeout(20 * 60_000),
-  });
-  if (!response.ok)
-    throw new Error(`Ollama download failed: ${response.status}`);
-  return { success: true as const, model };
-}
-async function listOllamaModels() {
-  const response = await fetch(`${ollamaBase()}/api/tags`, {
-    signal: AbortSignal.timeout(5000),
-  });
-  if (!response.ok) throw new Error(`Ollama tags failed: ${response.status}`);
-  const payload = (await response.json()) as {
-    models?: Array<{
-      name: string;
-      size?: number;
-      digest?: string;
-      modified_at?: string;
-    }>;
-  };
-  return { available: true as const, models: payload.models ?? [] };
-}
-
-async function completeWithOpenRouter(model: string, messages: SimpleMessage[]) {
-  const apiKey = process.env.OPENROUTER_API_KEY || process.env.MODEL_GATEWAY_API_KEY;
+async function completeWithOpenRouter(model: string, messages: SimpleMessage[], useWebSearch = false) {
+  const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("OPENROUTER_API_KEY is not configured");
   const requestedModel = model.replace(/^openrouter:/, "");
   const aliases: Record<string, string> = {
@@ -132,6 +46,7 @@ async function completeWithOpenRouter(model: string, messages: SimpleMessage[]) 
       model: selectedModel,
       messages,
       max_tokens: 1200,
+      ...(useWebSearch ? { plugins: [{ id: "web", max_results: 5 }] } : {}),
     }),
     signal: AbortSignal.timeout(90_000),
   });
@@ -261,6 +176,7 @@ export const appRouter = router({
             .min(1)
             .max(30),
           model: z.string().min(1).max(160).optional(),
+          useWebSearch: z.boolean().optional(),
         }),
       )
       .mutation(async ({ input }) => {
@@ -277,12 +193,11 @@ export const appRouter = router({
           content: message.content,
         }));
         try {
-          if (input.model?.startsWith("ollama:")) return completeWithOllama(input.model, simple.map((m) => ({ ...m, content: typeof m.content === "string" ? m.content : JSON.stringify(m.content) })));
-          if (input.model?.startsWith("llama:")) return completeWithLlamaCpp(input.model, simple.map((m) => ({ ...m, content: typeof m.content === "string" ? m.content : JSON.stringify(m.content) })));
-          if (input.model?.startsWith("openrouter:")) return completeWithOpenRouter(input.model, simple);
+          if (input.model?.startsWith("ollama:") || input.model?.startsWith("llama:")) throw new Error("النماذج المحلية تعمل داخل التطبيق فقط.");
+          if (input.model?.startsWith("openrouter:")) return completeWithOpenRouter(input.model, simple, input.useWebSearch);
           if (input.model?.startsWith("anthropic:")) return completeWithAnthropic(input.model, simple);
           if (input.model?.startsWith("gateway:")) return completeWithGateway(input.model, simple);
-          if (process.env.OPENROUTER_API_KEY || process.env.MODEL_GATEWAY_API_KEY) return completeWithOpenRouter(input.model ?? "", simple);
+          if ((process.env.OPENROUTER_API_KEY || process.env.MODEL_GATEWAY_API_KEY) && !input.model) return completeWithOpenRouter("", simple, input.useWebSearch);
           const response = await invokeLLM({ model: input.model, messages, maxTokens: 1200 });
           const content = response.choices[0]?.message?.content;
           return { content: typeof content === "string" ? content : JSON.stringify(content ?? ""), model: response.model, usage: response.usage ?? null };
@@ -323,20 +238,23 @@ export const appRouter = router({
   }),
   models: router({
     openRouter: publicProcedure.query(async () => {
-      const apiKey = process.env.OPENROUTER_API_KEY || process.env.MODEL_GATEWAY_API_KEY;
-      if (!apiKey) return { available: false as const, models: [] as Array<{ id: string; name: string; contextLength?: number; prompt?: string; completion?: string }> };
+      const apiKey = process.env.OPENROUTER_API_KEY;
+      if (!apiKey) return { available: false as const, models: [] as Array<{ id: string; name: string; contextLength?: number; prompt?: string; completion?: string; architecture?: string; inputModalities?: string[]; outputModalities?: string[] }> };
       try {
         const response = await fetch("https://openrouter.ai/api/v1/models", {
           headers: { authorization: `Bearer ${apiKey}` },
           signal: AbortSignal.timeout(20_000),
         });
         if (!response.ok) return { available: false as const, models: [] };
-        const payload = (await response.json()) as { data?: Array<{ id: string; name?: string; context_length?: number; pricing?: { prompt?: string; completion?: string } }> };
+        const payload = (await response.json()) as { data?: Array<{ id: string; name?: string; context_length?: number; architecture?: { modality?: string; input_modalities?: string[]; output_modalities?: string[] }; pricing?: { prompt?: string; completion?: string } }> };
         return {
           available: true as const,
           models: (payload.data ?? []).map((model) => ({
             id: model.id,
             name: model.name ?? model.id,
+            architecture: model.architecture?.modality,
+            inputModalities: model.architecture?.input_modalities,
+            outputModalities: model.architecture?.output_modalities,
             contextLength: model.context_length,
             prompt: model.pricing?.prompt,
             completion: model.pricing?.completion,
@@ -346,29 +264,24 @@ export const appRouter = router({
         return { available: false as const, models: [] };
       }
     }),
-    localStatus: publicProcedure.query(() =>
-      listOllamaModels().catch(() => ({
-        available: false as const,
-        models: [],
-      })),
-    ),
-    llamaStatus: publicProcedure.query(async () => {
-      try {
-        const response = await fetch(`${llamaBase()}/v1/models`, {
-          signal: AbortSignal.timeout(5000),
-        });
-        if (!response.ok) return { available: false as const, models: [] };
-        const payload = (await response.json()) as {
-          data?: Array<{ id: string }>;
-        };
-        return { available: true as const, models: payload.data ?? [] };
-      } catch {
-        return { available: false as const, models: [] };
-      }
-    }),
-    pull: publicProcedure
-      .input(z.object({ model: z.string().startsWith("ollama:") }))
-      .mutation(({ input }) => pullOllamaModel(input.model)),
+    verifyOpenRouterModel: publicProcedure
+      .input(z.object({ modelId: z.string().min(1).max(160) }))
+      .query(async ({ input }) => {
+        const apiKey = process.env.OPENROUTER_API_KEY;
+        if (!apiKey) return { available: false as const, reason: "مفتاح OpenRouter غير مفعّل على الخادم." };
+        try {
+          const response = await fetch("https://openrouter.ai/api/v1/models", {
+            headers: { authorization: `Bearer ${apiKey}` },
+            signal: AbortSignal.timeout(10_000),
+          });
+          if (!response.ok) return { available: false as const, reason: "تعذر قراءة كتالوج OpenRouter." };
+          const payload = (await response.json()) as { data?: Array<{ id?: string }> };
+          const found = (payload.data ?? []).some((item) => item.id === input.modelId);
+          return { available: found, reason: found ? "النموذج ظاهر في كتالوج OpenRouter." : "النموذج غير ظاهر حاليًا في الكتالوج." };
+        } catch {
+          return { available: false as const, reason: "تعذر التحقق من النموذج الآن." };
+        }
+      }),
   }),
 });
 export type AppRouter = typeof appRouter;

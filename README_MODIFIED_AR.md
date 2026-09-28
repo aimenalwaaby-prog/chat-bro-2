@@ -11,27 +11,21 @@
 - إصلاح تسجيل الدخول على أندرويد بإزالة فحص `canOpenURL` المضلل؛ يبقى نجاح OAuth معتمدًا على ضبط عناوين البوابة والخادم ومعرّف التطبيق في بيئة البناء.
 - تثبيت قائمة النماذج السحابية على IDs متحققة من كتالوج الخادم الحي: GPT-5 Nano/Mini/5/5.5 وGemini 3 Flash وGemini 3.1 Pro.
 - إضافة نماذج Ollama محلية مع تصنيف الاستخدام: محادثة، بحث، برمجة، ورؤية. حالة التثبيت تُقرأ من `/api/tags` ولا تُعرض كنجاح وهمي.
-- فحص TypeScript والاختبارات الحالية ناجحان، وبناء APK Release ناجح.
 
 ## تشغيل الخادم
 
 ```bash
 pnpm install
-pnpm build
 pnpm start
 ```
 
-النسخة الحالية مربوطة بعنوان الخادم الفعلي `https://chatbro-77jvovp6.manus.space`. لتشغيل النماذج المحلية، اضبط `OLLAMA_BASE_URL` وشغّل Ollama على الخادم. النماذج السحابية المدمجة تحتاج مفاتيح/إعدادات الخادم (`BUILT_IN_FORGE_API_URL` و`BUILT_IN_FORGE_API_KEY`) ولا تُضمّن المفاتيح داخل APK.
 
 ## بناء Android
 
 ```bash
-npx expo prebuild --platform android
 cd android
-./gradlew assembleRelease
 ```
 
-المخرج المعتاد هو `android/app/build/outputs/apk/release/app-release.apk`.
 
 > ملف المفاتيح الذي كان موجودًا في الأرشيف الأصلي لم يُنسخ إلى أرشيف المشروع المعدل حفاظًا على السرية.
 

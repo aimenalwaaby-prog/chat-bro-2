@@ -88,6 +88,7 @@ const config: ExpoConfig = {
     "expo-asset",
     "expo-font",
     "expo-web-browser",
+    ["llama.rn", { enableOpenCL: true, forceCxx20: true }],
     [
       "expo-audio",
       {
@@ -118,7 +119,7 @@ const config: ExpoConfig = {
       {
         android: {
             // Include both ABIs for compatibility with older XCover variants.
-            buildArchs: ["armeabi-v7a", "arm64-v8a"],
+            buildArchs: ["arm64-v8a"],
           minSdkVersion: 24,
         },
       },

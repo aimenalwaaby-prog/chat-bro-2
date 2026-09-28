@@ -9,8 +9,6 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? openAiBase ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? process.env.OPENAI_API_KEY ?? "",
-  ollamaBaseUrl: process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434",
-  llamaCppBaseUrl: process.env.LLAMA_CPP_BASE_URL ?? "http://127.0.0.1:8080",
   maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES ?? 16 * 1024 * 1024),
   allowedOrigins: (process.env.ALLOWED_ORIGINS ?? "").split(",").map((value) => value.trim()).filter(Boolean),
 };
