@@ -27,6 +27,30 @@ services:
         sync: false
       - key: ANTHROPIC_BASE_URL
         value: https://api.anthropic.com
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: CLOUDFLARE_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_API_TOKEN
+        sync: false
+      - key: CLOUDFLARE_MODELS
+        value: "@cf/meta/llama-3.1-8b-instruct,@cf/qwen/qwen1.5-7b-chat-awq"
+      - key: MODEL_GATEWAYS_JSON
+        sync: false
+      - key: MODEL_GATEWAY_BASE_URL
+        sync: false
+      - key: MODEL_GATEWAY_API_KEY
+        sync: false
+      - key: PROVIDER_API_KEYS_JSON
+        sync: false
+      - key: OPENROUTER_DEFAULT_MODEL
+        value: openai/gpt-4o-mini
+      - key: OPENROUTER_WEB_SEARCH_MODEL
+        value: openai/gpt-4o-mini
+      - key: ALLOWED_ORIGINS
+        value: https://chatbro-web.onrender.com
       - key: OPENROUTER_SITE_URL
         value: https://chatbro.app
       - key: OPENROUTER_APP_NAME
@@ -44,6 +68,8 @@ services:
     envVars:
       - key: EXPO_PUBLIC_API_BASE_URL
         value: https://chatbro-api.onrender.com
+      - key: EXPO_PUBLIC_EMBEDDED_RUNTIME
+        value: "false"
       - key: EXPO_PUBLIC_OAUTH_SERVER_URL
         value: https://api.manus.im
       - key: EXPO_PUBLIC_OAUTH_PORTAL_URL

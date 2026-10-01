@@ -17,7 +17,11 @@ const providers: { key: NonNullable<ChatBroModel["providerKey"]>; label: string 
   { key: "builtIn", label: "الخادم المدمج" },
   { key: "openrouter", label: "OpenRouter" },
   { key: "anthropic", label: "Anthropic" },
+  { key: "gemini", label: "Google Gemini" },
+  { key: "groq", label: "Groq" },
+  { key: "cloudflare", label: "Cloudflare AI" },
   { key: "gateway", label: "البوابات" },
+  { key: "local", label: "محلي" },
 ];
 
 export default function ModelsScreen() {
@@ -31,6 +35,9 @@ export default function ModelsScreen() {
   const openRouterModels = trpc.models.openRouter.useQuery(undefined, { enabled: serverCapabilities?.openrouter === true, staleTime: 60_000, retry: 1 });
   const builtInModels = trpc.models.builtIn.useQuery(undefined, { enabled: Boolean(serverCapabilities?.builtInLLM), staleTime: 60_000, retry: 1 });
   const anthropicModels = trpc.models.anthropic.useQuery(undefined, { enabled: Boolean(serverCapabilities?.anthropic), staleTime: 60_000, retry: 1 });
+  const geminiModels = trpc.models.gemini.useQuery(undefined, { enabled: Boolean(serverCapabilities?.gemini), staleTime: 60_000, retry: 1 });
+  const groqModels = trpc.models.groq.useQuery(undefined, { enabled: Boolean(serverCapabilities?.groq), staleTime: 60_000, retry: 1 });
+  const cloudflareModels = trpc.models.cloudflare.useQuery(undefined, { enabled: Boolean(serverCapabilities?.cloudflare), staleTime: 60_000, retry: 1 });
   const gatewayModels = trpc.models.gateways.useQuery(undefined, { enabled: Boolean(serverCapabilities?.gateway), staleTime: 60_000, retry: 1 });
 
   useEffect(() => {
@@ -101,6 +108,22 @@ export default function ModelsScreen() {
       types: ["محادثة", ...(model.supportsVision ? ["فهم الصور"] : []), ...searchTag],
       verified: true,
     }));
+    const gemini = (geminiModels.data?.models ?? []).map((model): ChatBroModel => ({
+      name: `${model.name} · Gemini`, modelId: `gemini:${model.id}`, provider: "Google Gemini · مباشر", providerKey: "gemini", icon: "auto-awesome",
+      tone: "limited", status: "متاح من Gemini", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Google", category: "محادثة",
+      requiresKey: true, localOnly: false, runtime: "cloud", inputModalities: model.supportsVision ? ["text", "image"] : ["text"], outputModalities: ["text"], supportsVision: model.supportsVision, verified: true,
+      types: ["محادثة", ...(model.supportsVision ? ["فهم الصور"] : []), ...searchTag],
+    }));
+    const groq = (groqModels.data?.models ?? []).map((model): ChatBroModel => ({
+      name: `${model.name} · Groq`, modelId: `groq:${model.id}`, provider: "Groq · مباشر", providerKey: "groq", icon: "speed",
+      tone: "limited", status: "متاح من Groq", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Groq", category: "محادثة",
+      requiresKey: true, localOnly: false, runtime: "cloud", inputModalities: ["text"], outputModalities: ["text"], verified: true, types: ["محادثة", "برمجة", ...searchTag],
+    }));
+    const cloudflare = (cloudflareModels.data?.models ?? []).map((model): ChatBroModel => ({
+      name: `${model.name} · Cloudflare`, modelId: `cloudflare:${model.id}`, provider: "Cloudflare Workers AI", providerKey: "cloudflare", icon: "cloud",
+      tone: "limited", status: "متاح من Cloudflare", limit: "حسب حساب Cloudflare", category: "محادثة", requiresKey: true, localOnly: false, runtime: "cloud",
+      inputModalities: ["text"], outputModalities: ["text"], verified: true, types: ["محادثة", "برمجة", ...searchTag],
+    }));
     const gateways = (gatewayModels.data?.models ?? []).map((model): ChatBroModel => {
       const candidate: ChatBroModel = {
         name: `${model.name} · ${model.provider}`,
@@ -125,10 +148,10 @@ export default function ModelsScreen() {
     const configuredStatic = chatBroModels
       .filter((model) => isModelAvailableToSelect(model, serverCapabilities))
       .map((model) => ({ ...model, types: [...new Set([...(model.types ?? []), ...searchTag])] }));
-    const liveModels = [...builtIn, ...anthropic, ...gateways, ...openRouter];
+    const liveModels = [...builtIn, ...anthropic, ...gemini, ...groq, ...cloudflare, ...gateways, ...openRouter];
     const existing = new Set(configuredStatic.map((model) => model.modelId));
     return [...configuredStatic, ...liveModels.filter((model) => !existing.has(model.modelId))];
-  }, [anthropicModels.data, builtInModels.data, gatewayModels.data, openRouterModels.data, serverCapabilities]);
+  }, [anthropicModels.data, builtInModels.data, cloudflareModels.data, geminiModels.data, gatewayModels.data, groqModels.data, openRouterModels.data, serverCapabilities]);
 
   const filtered = useMemo(() => filterModels(allModels, activeType, query)
     .filter((model) => activeProvider === "all" || model.providerKey === activeProvider),
@@ -178,7 +201,7 @@ export default function ModelsScreen() {
 
       <View className="mb-3 flex-row-reverse items-center justify-between">
         <StatusBadge label={`${filtered.length} نموذجًا`} tone="full" />
-        <Text className="text-right text-[10px] text-muted">{openRouterModels.isFetching || builtInModels.isFetching || anthropicModels.isFetching || gatewayModels.isFetching ? "تحديث الكتالوج…" : allModels.length ? "بيانات مباشرة من المزودين المهيئين" : "لا يوجد مزود سحابي مهيأ"}</Text>
+        <Text className="text-right text-[10px] text-muted">{openRouterModels.isFetching || builtInModels.isFetching || anthropicModels.isFetching || geminiModels.isFetching || groqModels.isFetching || cloudflareModels.isFetching || gatewayModels.isFetching ? "تحديث الكتالوج…" : allModels.length ? "بيانات مباشرة من جميع المزودين المهيئين" : "لا يوجد مزود سحابي مهيأ"}</Text>
       </View>
       <FlatList
         data={filtered}

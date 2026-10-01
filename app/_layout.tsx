@@ -36,6 +36,7 @@ export default function RootLayout() {
 
   // Initialize Manus runtime for cookie injection from parent container
   useEffect(() => {
+    if (process.env.EXPO_PUBLIC_EMBEDDED_RUNTIME !== "true") return;
     initManusRuntime();
   }, []);
 
