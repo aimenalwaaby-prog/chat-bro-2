@@ -22,7 +22,7 @@ const errorForClient = (error: unknown) => {
   if (/timeout|abort|timed out/i.test(text)) return "انتهت مهلة المزود. حاول مرة أخرى.";
   return text.length < 180 ? text : "تعذر تنفيذ الطلب على الخادم.";
 };
-async function completeWithOpenRouter(model: string, messages: SimpleMessage[], useWebSearch = false) {
+async function completeWithOpenRouter(model: string, messages: SimpleMessage[], useWebSearch = false, deepThinking = false) {
   const apiKey = getProviderKey("openrouter", process.env.OPENROUTER_API_KEY);
   if (!apiKey) throw new Error("OPENROUTER_API_KEY is not configured");
   const requestedModel = model.replace(/^openrouter:/, "");
@@ -48,6 +48,7 @@ async function completeWithOpenRouter(model: string, messages: SimpleMessage[], 
       model: selectedModel,
       messages,
       max_tokens: 1200,
+      ...(deepThinking ? { reasoning: { effort: "high" } } : {}),
       ...(useWebSearch ? {
         tools: [{ type: "openrouter:web_search", parameters: { engine: "auto", search_context_size: "low", max_total_results: 5, max_uses: 1 } }],
         max_tool_calls: 1,
@@ -400,6 +401,7 @@ export const appRouter = router({
             .max(30),
           model: z.string().min(1).max(160).optional(),
           useWebSearch: z.boolean().optional(),
+          deepThinking: z.boolean().optional(),
         }),
       )
       .mutation(async ({ input, ctx }) => {
@@ -432,7 +434,7 @@ export const appRouter = router({
             routedMessages = [searchSystemMessage, ...messages];
             routedSimple = [{ role: searchSystemMessage.role, content: searchSystemMessage.content }, ...simple];
           }
-          if (input.model?.startsWith("openrouter:")) return record(await completeWithOpenRouter(input.model, simple, input.useWebSearch));
+          if (input.model?.startsWith("openrouter:")) return record(await completeWithOpenRouter(input.model, simple, input.useWebSearch, input.deepThinking));
           if (input.model?.startsWith("gemini:")) return record(await completeWithGemini(input.model, routedSimple));
           if (input.model?.startsWith("groq:")) return record(await completeWithGroq(input.model, routedSimple));
           if (input.model?.startsWith("cloudflare:")) return record(await completeWithCloudflare(input.model, routedSimple));
@@ -443,8 +445,8 @@ export const appRouter = router({
             const content = response.choices[0]?.message?.content;
             return record({ content: typeof content === "string" ? content : JSON.stringify(content ?? ""), model: response.model, usage: response.usage ?? null });
           }
-          if (process.env.OPENROUTER_API_KEY && !input.model) return record(await completeWithOpenRouter("", simple, input.useWebSearch));
-          const response = await invokeLLM({ model: input.model, messages: routedMessages, maxTokens: 1200 });
+          if (process.env.OPENROUTER_API_KEY && !input.model) return record(await completeWithOpenRouter("", simple, input.useWebSearch, input.deepThinking));
+          const response = await invokeLLM({ model: input.model, messages: routedMessages, maxTokens: 1200, ...(input.deepThinking ? { reasoning: { effort: "high" } } : {}) });
           const content = response.choices[0]?.message?.content;
           return record({ content: typeof content === "string" ? content : JSON.stringify(content ?? ""), model: response.model, usage: response.usage ?? null });
         } catch (error) {

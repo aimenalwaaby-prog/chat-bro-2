@@ -74,6 +74,7 @@ export default function ChatScreen() {
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [modelsOpen, setModelsOpen] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [deepThinkingEnabled, setDeepThinkingEnabled] = useState(false);
   const [localModels, setLocalModels] = useState<InstalledLocalModel[]>([]);
   const [serverCapabilities, setServerCapabilities] = useState<Record<string, boolean> | null>(null);
   const completeChat = trpc.chat.complete.useMutation();
@@ -377,6 +378,7 @@ export default function ChatScreen() {
       const response = await completeChat.mutateAsync({
         model: params.directModel || selectedRuntimeModel || undefined,
         useWebSearch: webSearchEnabled,
+        deepThinking: deepThinkingEnabled,
         messages: [...messages, userMessage].map((message, index) =>
           index === messages.length
             ? {
@@ -629,7 +631,7 @@ export default function ChatScreen() {
               ))}
             </ScrollView>
           ) : null}
-          <View className="mb-2 flex-row-reverse items-center justify-between gap-2">
+          <View className="mb-2 flex-row-reverse flex-wrap items-center justify-between gap-2">
             <Pressable
               accessibilityRole="button"
               accessibilityState={{ disabled: !canUseWebSearch }}
@@ -657,6 +659,16 @@ export default function ChatScreen() {
             >
               <MaterialIcons name="auto-awesome" size={15} color={canGenerateImage ? colors.primary : colors.muted} />
               <Text className="text-[10px] font-bold" style={{ color: canGenerateImage ? colors.primary : colors.muted }}>إنشاء صورة</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="تفعيل التفكير العميق"
+              onPress={() => setDeepThinkingEnabled((enabled) => !enabled)}
+              style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+              className="flex-row-reverse items-center gap-1 rounded-full border px-3 py-1.5"
+            >
+              <MaterialIcons name="psychology" size={15} color={deepThinkingEnabled ? colors.primary : colors.muted} />
+              <Text className="text-[10px] font-bold" style={{ color: deepThinkingEnabled ? colors.primary : colors.muted }}>{deepThinkingEnabled ? "تفكير عميق مفعّل" : "تفكير عميق"}</Text>
             </Pressable>
           </View>
           {webSearchEnabled ? <Text className="mb-2 text-right text-[9px] leading-4 text-muted">عند التفعيل يُرسل نص السؤال إلى الخادم وOpenRouter للبحث، وقد يُحتسب استخدام إضافي. لا يُستخدم في المحادثة المحلية.</Text> : null}
