@@ -600,18 +600,27 @@ export const appRouter = router({
       const results = await Promise.all(gateways.map(async ([gatewayId, gateway]) => {
         try {
           const base = gateway.baseUrl.replace(/\/$/, "");
-          const response = await fetch(`${base}/models`, {
-            headers: gateway.apiKey ? { authorization: `Bearer ${gateway.apiKey}` } : {},
+          const requestModels = (withAuth: boolean) => fetch(`${base}/models`, {
+            headers: withAuth && gateway.apiKey ? { authorization: `Bearer ${gateway.apiKey}` } : {},
             signal: AbortSignal.timeout(10_000),
           });
+          let response = await requestModels(true);
+          if (!response.ok) response = await requestModels(false);
           if (!response.ok) return [];
           type GatewayModelEntry = { id?: string; name?: string; context_length?: number; architecture?: { input_modalities?: string[]; output_modalities?: string[] } };
-          const payload = (await response.json()) as { data?: GatewayModelEntry[]; models?: GatewayModelEntry[] };
-          const rows = payload.data ?? payload.models ?? [];
+          let payload = (await response.json()) as { data?: GatewayModelEntry[]; models?: GatewayModelEntry[] };
+          let rows = payload.data ?? payload.models ?? [];
+          if (!rows.length && gateway.apiKey) {
+            response = await requestModels(false);
+            if (response.ok) {
+              payload = (await response.json()) as { data?: GatewayModelEntry[]; models?: GatewayModelEntry[] };
+              rows = payload.data ?? payload.models ?? [];
+            }
+          }
           return rows.filter((item) => typeof item.id === "string" && item.id.length > 0).slice(0, 200).map((item) => ({
             id: `gateway:${gatewayId}:${item.id}`,
             name: item.name ?? item.id!,
-            provider: gatewayId,
+            provider: gatewayId === "pollinations" ? "Pollinations" : gatewayId,
             contextLength: item.context_length,
             inputModalities: item.architecture?.input_modalities,
             outputModalities: item.architecture?.output_modalities ?? ["text"],
