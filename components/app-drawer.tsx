@@ -6,7 +6,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/use-colors";
 import { loadModelPreferences, type ModelPreferences, type ModelShortcut } from "@/lib/model-preferences";
-import { WebSidebar } from "@/components/web-sidebar";
 
 const DrawerContext = createContext<{ openDrawer: () => void }>({ openDrawer: () => undefined });
 
@@ -98,8 +97,7 @@ export function AppDrawerShell({ children }: { children: ReactNode }) {
 
   return (
     <DrawerContext.Provider value={{ openDrawer }}>
-      <View {...panResponder.panHandlers} style={{ flex: 1, flexDirection: Platform.OS === "web" ? "row-reverse" : "column" }}>
-        {Platform.OS === "web" ? <WebSidebar /> : null}
+      <View {...panResponder.panHandlers} style={{ flex: 1 }}>
         <View style={{ flex: 1 }}>{children}</View>
         {open ? (
           <View pointerEvents="box-none" style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, zIndex: 1000 }}>
@@ -127,6 +125,7 @@ export function AppDrawerShell({ children }: { children: ReactNode }) {
               {preferences.usage.length ? preferences.usage.slice(0, 5).map((model) => shortcut(model, `${model.count} استخدام`)) : <Text className="mb-3 px-2 text-right text-[11px] leading-5 text-muted">ستظهر النماذج هنا بعد استخدامها في المحادثات.</Text>}
 
               <Text className="mb-2 mt-3 px-2 text-right text-[11px] font-extrabold text-primary">التطبيق</Text>
+              <DrawerLink icon="home" label="الرئيسية" onPress={() => navigate("/(tabs)")} colors={colors} />
               <DrawerLink icon="chat" label="محادثة جديدة" onPress={() => navigate("/(tabs)/chat")} colors={colors} />
               <DrawerLink icon="widgets" label="النماذج وتصنيفاتها" onPress={() => navigate("/(tabs)/models")} colors={colors} />
               <DrawerLink icon="image" label="إنشاء الصور" onPress={() => navigate("/(tabs)/images")} colors={colors} />
