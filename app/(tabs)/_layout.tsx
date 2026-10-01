@@ -25,6 +25,7 @@ export default function TabLayout() {
         tabBarButton: HapticTab,
         tabBarLabelStyle: { fontSize: 10, fontWeight: "600", marginTop: 1 },
         tabBarStyle: {
+          ...(Platform.OS === "web" ? { display: "none" as const } : {}),
           paddingTop: 7,
           paddingBottom: bottomPadding,
           height: tabBarHeight,

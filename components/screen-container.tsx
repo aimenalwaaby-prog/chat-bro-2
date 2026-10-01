@@ -1,4 +1,4 @@
-import { View, type ViewProps } from "react-native";
+import { Platform, View, type ViewProps } from "react-native";
 import { SafeAreaView, type Edge } from "react-native-safe-area-context";
 
 import { cn } from "@/lib/utils";
@@ -61,7 +61,7 @@ export function ScreenContainer({
         className={cn("flex-1", safeAreaClassName)}
         style={style}
       >
-        <View className={cn("flex-1", className)}>{children}</View>
+        <View className={cn("flex-1 w-full self-center", className)} style={Platform.OS === "web" ? { maxWidth: 1280 } : undefined}>{children}</View>
       </SafeAreaView>
     </View>
   );

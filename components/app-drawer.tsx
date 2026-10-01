@@ -1,11 +1,12 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Animated, BackHandler, Dimensions, PanResponder, Pressable, ScrollView, Text, View } from "react-native";
+import { Animated, BackHandler, Dimensions, PanResponder, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/use-colors";
 import { loadModelPreferences, type ModelPreferences, type ModelShortcut } from "@/lib/model-preferences";
+import { WebSidebar } from "@/components/web-sidebar";
 
 const DrawerContext = createContext<{ openDrawer: () => void }>({ openDrawer: () => undefined });
 
@@ -97,8 +98,9 @@ export function AppDrawerShell({ children }: { children: ReactNode }) {
 
   return (
     <DrawerContext.Provider value={{ openDrawer }}>
-      <View {...panResponder.panHandlers} style={{ flex: 1 }}>
-        {children}
+      <View {...panResponder.panHandlers} style={{ flex: 1, flexDirection: Platform.OS === "web" ? "row-reverse" : "column" }}>
+        {Platform.OS === "web" ? <WebSidebar /> : null}
+        <View style={{ flex: 1 }}>{children}</View>
         {open ? (
           <View pointerEvents="box-none" style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, zIndex: 1000 }}>
             <Pressable accessibilityRole="button" accessibilityLabel="إغلاق القائمة الجانبية" onPress={closeDrawer} style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: "rgba(2, 14, 24, 0.54)" }} />
