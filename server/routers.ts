@@ -6,7 +6,7 @@ import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_
 import { TRPCError } from "@trpc/server";
 import { processFile } from "./fileProcessing";
 import { storagePut } from "./storage";
-import { generateImage } from "./_core/imageGeneration";
+import { generateImage, listImageModels } from "./_core/imageGeneration";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import * as db from "./db";
 import { z } from "zod";
@@ -296,6 +296,12 @@ function getConfiguredGateways() {
       apiKey: process.env.MODEL_GATEWAY_API_KEY,
     };
   }
+  if (process.env.POLLINATIONS_API_KEY) {
+    gateways.pollinations ??= { baseUrl: "https://gen.pollinations.ai/v1", apiKey: process.env.POLLINATIONS_API_KEY };
+  }
+  if (process.env.COMFYUI_BASE_URL) {
+    gateways.comfyui ??= { baseUrl: process.env.COMFYUI_BASE_URL, apiKey: process.env.COMFYUI_API_KEY };
+  }
   return gateways;
 }
 
@@ -462,6 +468,14 @@ export const appRouter = router({
     }),
   }),
   images: router({
+    models: publicProcedure.query(async () => {
+      try {
+        const result = await listImageModels();
+        return { available: result.models.length > 0, models: result.models };
+      } catch {
+        return { available: false, models: [] };
+      }
+    }),
     generate: publicProcedure.input(z.object({ prompt: z.string().min(3).max(4000), model: z.string().max(120).optional(), quality: z.enum(["medium", "high"]).optional() })).mutation(async ({ input, ctx }) => {
       enforceUsage({ req: ctx.req, user: ctx.user, kind: "image", model: input.model });
       try {

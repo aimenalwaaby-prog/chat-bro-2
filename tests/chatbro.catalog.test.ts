@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import { chatBroModels, filterModels, getModelTypeTags, isModelAvailableToSelect } from "../shared/chatbro-catalog";
 
 describe("Chat Bro model catalog", () => {
-  it("keeps only the verified default route in the static catalog", () => {
-    expect(chatBroModels).toHaveLength(1);
+  it("keeps the default route and planned provider/image entries in the static catalog", () => {
+    expect(chatBroModels.length).toBeGreaterThan(1);
     expect(chatBroModels.some((model) => model.tone === "full")).toBe(true);
     expect(chatBroModels.every((model) => model.status.length > 0 && model.limit.length > 0 && model.modelId !== undefined)).toBe(true);
-    expect(chatBroModels[0].modelId).toBe("");
+    expect(chatBroModels.some((model) => model.modelId.startsWith("planned:") && model.status === "قريبًا")).toBe(true);
+    expect(chatBroModels.find((model) => !model.modelId)?.modelId).toBe("");
   });
 
   it("filters by model capability and provider/model query", () => {

@@ -25,6 +25,21 @@ export type GenerateImageResponse = {
 };
 
 export async function generateImage(options: GenerateImageOptions): Promise<GenerateImageResponse> {
+  const pollinationsKey = process.env.POLLINATIONS_API_KEY;
+  const selectedPollinationsModel = options.model?.startsWith("pollinations:") ? options.model.slice("pollinations:".length) : undefined;
+  if (selectedPollinationsModel || (!process.env.OPENROUTER_API_KEY && pollinationsKey && !process.env.BUILT_IN_FORGE_API_KEY)) {
+    if (!pollinationsKey) throw new Error("POLLINATIONS_API_KEY غير مهيأ على الخادم.");
+    const model = selectedPollinationsModel || process.env.POLLINATIONS_IMAGE_MODEL || "flux";
+    const url = new URL(`https://gen.pollinations.ai/image/${encodeURIComponent(options.prompt)}`);
+    url.searchParams.set("model", model);
+    url.searchParams.set("nologo", "true");
+    const response = await fetch(url, { headers: { authorization: `Bearer ${pollinationsKey}` }, signal: AbortSignal.timeout(120_000) });
+    if (!response.ok) throw new Error(`Pollinations image request failed: ${response.status}`);
+    const mimeType = response.headers.get("content-type") || "image/png";
+    const stored = await storagePut(`generated/${Date.now()}.png`, Buffer.from(await response.arrayBuffer()), mimeType);
+    const publicBase = (process.env.PUBLIC_API_BASE_URL ?? "https://chatbro-api.onrender.com").replace(/\/$/, "");
+    return { url: `${publicBase}${stored.url}` };
+  }
   const forgeApiKey = process.env.BUILT_IN_FORGE_API_KEY;
   const forgeApiUrl = process.env.BUILT_IN_FORGE_API_URL;
   const openRouterApiKey = process.env.OPENROUTER_API_KEY;
@@ -62,8 +77,9 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
       const detail = await response.text().catch(() => "");
       throw new Error(`OpenRouter image request failed (${response.status} ${response.statusText})${detail ? `: ${detail.slice(0, 500)}` : ""}`);
     }
-    const payload = (await response.json()) as { data?: Array<{ b64_json?: string; media_type?: string }> };
+    const payload = (await response.json()) as { data?: Array<{ b64_json?: string; url?: string; media_type?: string }> };
     const image = payload.data?.[0];
+    if (image?.url) return { url: image.url };
     if (!image?.b64_json) throw new Error("OpenRouter لم يُرجع بيانات الصورة.");
     const mimeType = image.media_type ?? "image/png";
     const stored = await storagePut(`generated/${Date.now()}.png`, Buffer.from(image.b64_json, "base64"), mimeType);
@@ -104,6 +120,10 @@ export type ImageModelInfo = {
   model?: string;
   /** Stable model ID, e.g. "gpt-image-2". */
   id?: string;
+  provider?: string;
+  pricing?: { prompt?: string; completion?: string; image?: string };
+  access?: "مجاني" | "مدفوع" | "غير محدد" | "حسب الخادم";
+  dailyLimit?: string;
 };
 
 export type ListImageModelsResponse = {
@@ -119,8 +139,24 @@ export async function listImageModels(): Promise<ListImageModelsResponse> {
         signal: AbortSignal.timeout(20_000),
       });
       if (response.ok) {
-        const payload = (await response.json()) as { data?: Array<{ id?: string; name?: string }> };
-        return { models: (payload.data ?? []).filter((m) => m.id).map((m) => ({ id: m.id, model: m.id, })) };
+        const payload = (await response.json()) as { data?: Array<{ id?: string; name?: string; pricing?: { prompt?: string; completion?: string; image?: string } }> };
+        return { models: (payload.data ?? []).filter((m) => m.id).map((m) => {
+          const pricing = m.pricing;
+          const free = pricing && [pricing.prompt, pricing.completion, pricing.image].some((value) => value === "0");
+          return { id: m.id, model: m.id, provider: "OpenRouter", pricing, access: free ? "مجاني" as const : pricing ? "مدفوع" as const : "غير محدد" as const, dailyLimit: free ? "حسب الحصة المجانية للمزود" : "حسب رصيد ومعدل المزود" };
+        }) };
+      }
+      const catalogResponse = await fetch("https://openrouter.ai/api/v1/models", {
+        headers: { authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (catalogResponse.ok) {
+        const payload = (await catalogResponse.json()) as { data?: Array<{ id?: string; name?: string; architecture?: { output_modalities?: string[] }; pricing?: { prompt?: string; completion?: string; image?: string } }> };
+        return { models: (payload.data ?? []).filter((m) => m.id && m.architecture?.output_modalities?.includes("image")).map((m) => {
+          const pricing = m.pricing;
+          const free = pricing && [pricing.prompt, pricing.completion, pricing.image].some((value) => value === "0");
+          return { id: m.id, model: m.id, provider: "OpenRouter", pricing, access: free ? "مجاني" as const : pricing ? "مدفوع" as const : "غير محدد" as const, dailyLimit: free ? "حسب الحصة المجانية للمزود" : "حسب رصيد ومعدل المزود" };
+        }) };
       }
     } catch {}
   }
@@ -138,7 +174,7 @@ export async function listImageModels(): Promise<ListImageModelsResponse> {
     });
     if (!response.ok) throw new Error(`Forge image model listing failed: ${response.status}`);
     const payload = (await response.json()) as { models?: ImageModelInfo[] };
-    return { models: payload.models ?? [] };
+    return { models: (payload.models ?? []).map((model) => ({ ...model, provider: model.provider ?? "Forge", access: model.access ?? "حسب الخادم", dailyLimit: model.dailyLimit ?? "حسب إعداد الخادم" })) };
   }
   return { models: [] };
 }

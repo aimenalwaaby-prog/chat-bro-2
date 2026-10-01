@@ -43,6 +43,12 @@ services:
         sync: false
       - key: MODEL_GATEWAY_API_KEY
         sync: false
+      - key: POLLINATIONS_API_KEY
+        sync: false
+      - key: COMFYUI_BASE_URL
+        sync: false
+      - key: COMFYUI_API_KEY
+        sync: false
       - key: PROVIDER_API_KEYS_JSON
         sync: false
       - key: OPENROUTER_DEFAULT_MODEL

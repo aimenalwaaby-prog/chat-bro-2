@@ -87,6 +87,8 @@ async function startServer() {
         forgeImages: Boolean(process.env.BUILT_IN_FORGE_API_KEY && process.env.BUILT_IN_FORGE_API_URL),
         anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
         gateway: Boolean(process.env.MODEL_GATEWAY_BASE_URL || process.env.MODEL_GATEWAYS_JSON),
+        pollinations: Boolean(process.env.POLLINATIONS_API_KEY),
+        comfyui: Boolean(process.env.COMFYUI_BASE_URL),
       },
     });
   };

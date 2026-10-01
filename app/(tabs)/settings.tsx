@@ -194,6 +194,14 @@ export default function SettingsScreen() {
         </View>
 
         <View className="mt-6 rounded-[22px] border bg-surface p-4" style={{ borderColor: colors.border }}>
+          <View className="flex-row-reverse items-center justify-between">
+            <View className="flex-row-reverse items-center gap-3"><View className="h-10 w-10 items-center justify-center rounded-2xl bg-[#FFF4D8]"><MaterialIcons name="workspace-premium" size={20} color="#A36A00" /></View><View><Text className="text-right text-[12px] font-bold text-foreground">اشتراك Chat Bro Plus</Text><Text className="mt-1 text-right text-[10px] text-muted">غير مفعل حاليًا · سيُفعّل لاحقًا</Text></View></View>
+            <View className="rounded-full bg-[#FFF4D8] px-2.5 py-1.5"><Text className="text-[9px] font-bold text-[#A36A00]">قريبًا</Text></View>
+          </View>
+          <Text className="mt-3 text-right text-[10px] leading-5 text-muted">تعمل الخطة المجانية وفق حدود كل ميزة ومزود. النماذج المحلية لا تستهلك حصة الخادم، أما النماذج السحابية فتلتزم بالحد الظاهر في بطاقة النموذج.</Text>
+        </View>
+
+        <View className="mt-6 rounded-[22px] border bg-surface p-4" style={{ borderColor: colors.border }}>
           <SectionHeading title="تواصل مع المطور" />
           <Text className="mt-2 text-right text-[10px] leading-5 text-muted">للاستفسارات أو الملاحظات، يمكنك التواصل مباشرة عبر واتساب أو البريد الإلكتروني.</Text>
           <View className="mt-3 gap-2">

@@ -43,9 +43,9 @@ export async function apiCall<T>(endpoint: string, options: RequestInit = {}): P
     console.log("[API] Making request...");
     let response: Response | undefined;
     let lastError: unknown;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 60_000);
+      const timeout = setTimeout(() => controller.abort(), 15_000);
       try {
         response = await fetch(url, {
           ...options,
@@ -56,7 +56,7 @@ export async function apiCall<T>(endpoint: string, options: RequestInit = {}): P
         break;
       } catch (error) {
         lastError = error;
-        if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 900 * (attempt + 1)));
+        if (attempt < 1) await new Promise((resolve) => setTimeout(resolve, 700));
       } finally {
         clearTimeout(timeout);
       }

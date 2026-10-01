@@ -165,6 +165,7 @@ export default function ModelsScreen() {
   };
 
   const openModel = (model: ChatBroModel) => {
+    if (model.modelId.startsWith("planned:")) return;
     const imageOnly = activeType === "إنشاء الصور" && model.outputModalities?.includes("image");
     const noTextOutput = Boolean(model.outputModalities?.length && !model.outputModalities.includes("text"));
     if (imageOnly || noTextOutput) {
@@ -213,7 +214,7 @@ export default function ModelsScreen() {
           const favorite = favoriteIds.has(item.modelId);
           return (
             <View className="flex-row-reverse items-center rounded-[20px] border p-3" style={{ backgroundColor: colors.surface, borderColor: colors.border }}>
-              <Pressable onPress={() => openModel(item)} className="min-h-[78px] flex-1 flex-row-reverse items-center">
+              <Pressable disabled={item.modelId.startsWith("planned:")} onPress={() => openModel(item)} className="min-h-[78px] flex-1 flex-row-reverse items-center" style={{ opacity: item.modelId.startsWith("planned:") ? 0.68 : 1 }}>
                 <View className="h-11 w-11 items-center justify-center rounded-[15px] bg-[#E6F8FD]"><MaterialIcons name={item.icon as never} size={21} color="#0787B4" /></View>
                 <View className="mr-3 flex-1">
                   <View className="flex-row-reverse items-center justify-between gap-2"><Text numberOfLines={1} className="flex-1 text-right text-[12px] font-bold text-foreground">{item.name}</Text><StatusBadge label={item.status} tone={item.tone} /></View>

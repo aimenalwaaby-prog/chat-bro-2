@@ -105,17 +105,17 @@ export default function ChatScreen() {
     status: "متاح من الخادم", limit: "حسب إعداد المزود", category: "محادثة", requiresKey: false, localOnly: false, runtime: "cloud", inputModalities: ["text"], outputModalities: ["text"], types: ["محادثة"], verified: true,
   })), [builtInModels.data]);
   const dynamicGeminiModels = useMemo<ChatBroModel[]>(() => (geminiModels.data?.models ?? []).map((model) => ({
-    name: `${model.name} · Gemini`, modelId: `gemini:${model.id}`, provider: "Google Gemini · مباشر", providerKey: "gateway", icon: "auto-awesome", tone: "limited",
+    name: `${model.name} · Gemini`, modelId: `gemini:${model.id}`, provider: "Google Gemini · مباشر", providerKey: "gemini", icon: "auto-awesome", tone: "limited",
     status: "متاح من Gemini", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Google", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway",
     inputModalities: model.supportsVision ? ["text", "image"] : ["text"], outputModalities: ["text"], supportsVision: model.supportsVision, verified: true, types: ["محادثة", ...(model.supportsVision ? ["فهم الصور"] : [])],
   })), [geminiModels.data]);
   const dynamicGroqModels = useMemo<ChatBroModel[]>(() => (groqModels.data?.models ?? []).map((model) => ({
-    name: `${model.name} · Groq`, modelId: `groq:${model.id}`, provider: "Groq · مباشر", providerKey: "gateway", icon: "speed", tone: "limited",
+    name: `${model.name} · Groq`, modelId: `groq:${model.id}`, provider: "Groq · مباشر", providerKey: "groq", icon: "speed", tone: "limited",
     status: "متاح من Groq", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Groq", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway",
     inputModalities: ["text"], outputModalities: ["text"], supportsVision: false, verified: true, types: ["محادثة", "برمجة"],
   })), [groqModels.data]);
   const dynamicCloudflareModels = useMemo<ChatBroModel[]>(() => (cloudflareModels.data?.models ?? []).map((model) => ({
-    name: `${model.name} · Cloudflare`, modelId: `cloudflare:${model.id}`, provider: "Cloudflare Workers AI", providerKey: "gateway", icon: "cloud", tone: "limited",
+    name: `${model.name} · Cloudflare`, modelId: `cloudflare:${model.id}`, provider: "Cloudflare Workers AI", providerKey: "cloudflare", icon: "cloud", tone: "limited",
     status: "متاح من Cloudflare", limit: "حسب حساب Cloudflare", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway",
     inputModalities: ["text"], outputModalities: ["text"], supportsVision: false, verified: true, types: ["محادثة", "برمجة"],
   })), [cloudflareModels.data]);
@@ -136,7 +136,16 @@ export default function ChatScreen() {
   const selectedCatalogModel = cloudChatModels.find((model) => model.name === selectedModel);
   const selectedRuntimeModel = selectedCatalogModel?.modelId;
   useEffect(() => { let active = true; listInstalledLocalModels().then((items) => active && setLocalModels(items)); return () => { active = false; }; }, []);
-  useEffect(() => { let active = true; void checkServerConnection().then((result) => active && setServerCapabilities(result.capabilities ?? {})); return () => { active = false; }; }, []);
+  useEffect(() => {
+    let active = true;
+    void checkServerConnection().then((result) => {
+      if (!active) return;
+      const capabilities = result.capabilities ?? {};
+      setServerCapabilities(capabilities);
+      setWebSearchEnabled(Boolean(capabilities.openrouter));
+    });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     setLoadedHistory("");
@@ -175,7 +184,7 @@ export default function ChatScreen() {
   const canUseWebSearch = Boolean(serverCapabilities?.openrouter) && !localModelSelected;
   const canGenerateImage = Boolean(serverCapabilities?.openrouter || serverCapabilities?.forgeImages);
   const canAttachImage = !localModelSelected && (!selectedModel || Boolean(selectedCatalogModel?.supportsVision || selectedCatalogModel?.inputModalities?.includes("image")));
-  useEffect(() => { if (localModelSelected) setWebSearchEnabled(false); }, [localModelSelected]);
+  useEffect(() => { if (localModelSelected) setWebSearchEnabled(false); else if (serverCapabilities?.openrouter) setWebSearchEnabled(true); }, [localModelSelected, serverCapabilities?.openrouter]);
 
   const addImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -631,7 +640,7 @@ export default function ChatScreen() {
             >
               <MaterialIcons name="language" size={15} color={webSearchEnabled ? colors.primary : colors.muted} />
               <Text className="text-[10px] font-bold" style={{ color: webSearchEnabled ? colors.primary : colors.muted }}>
-                {localModelSelected ? "المحلي بلا إنترنت" : !serverCapabilities?.openrouter ? "البحث غير مهيأ" : webSearchEnabled ? "بحث الويب مفعّل" : "بحث الويب"}
+                {localModelSelected ? "المحلي بلا إنترنت" : serverCapabilities === null ? "الخادم لا يستجيب" : !serverCapabilities.openrouter ? "بحث الويب · قريبًا" : webSearchEnabled ? "بحث الويب مفعّل" : "بحث الويب"}
               </Text>
             </Pressable>
             <Pressable

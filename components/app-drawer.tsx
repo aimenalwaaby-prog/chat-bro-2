@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/use-colors";
 import { loadModelPreferences, type ModelPreferences, type ModelShortcut } from "@/lib/model-preferences";
+import { trpc } from "@/lib/trpc";
 
 const DrawerContext = createContext<{ openDrawer: () => void }>({ openDrawer: () => undefined });
 
@@ -21,6 +22,7 @@ export function AppDrawerShell({ children }: { children: ReactNode }) {
   const drawerWidth = Math.min(360, Math.max(280, width * 0.86));
   const [open, setOpen] = useState(false);
   const [preferences, setPreferences] = useState<ModelPreferences>({ favorites: [], usage: [] });
+  const imageModels = trpc.images.models.useQuery(undefined, { staleTime: 60_000, retry: 1 });
   const openRef = useRef(false);
   const translateX = useRef(new Animated.Value(drawerWidth)).current;
 
@@ -104,9 +106,9 @@ export function AppDrawerShell({ children }: { children: ReactNode }) {
             <Pressable accessibilityRole="button" accessibilityLabel="إغلاق القائمة الجانبية" onPress={closeDrawer} style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: "rgba(2, 14, 24, 0.54)" }} />
           </View>
         ) : null}
-        <Animated.View
-          pointerEvents={open ? "auto" : "none"}
-          accessibilityViewIsModal={open}
+        {open ? <Animated.View
+          pointerEvents="auto"
+          accessibilityViewIsModal
           style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: drawerWidth, zIndex: 1001, backgroundColor: colors.background, borderLeftColor: colors.border, borderLeftWidth: 1, transform: [{ translateX }] }}
         >
           <View style={{ paddingTop: Math.max(insets.top, 16), paddingBottom: Math.max(insets.bottom, 12), flex: 1 }}>
@@ -129,6 +131,18 @@ export function AppDrawerShell({ children }: { children: ReactNode }) {
               <DrawerLink icon="chat" label="محادثة جديدة" onPress={() => navigate("/(tabs)/chat")} colors={colors} />
               <DrawerLink icon="widgets" label="النماذج وتصنيفاتها" onPress={() => navigate("/(tabs)/models")} colors={colors} />
               <DrawerLink icon="image" label="إنشاء الصور" onPress={() => navigate("/(tabs)/images")} colors={colors} />
+              {imageModels.data?.models?.slice(0, 8).map((model) => {
+                const id = model.id ?? model.model ?? "";
+                if (!id) return null;
+                return <Pressable key={`image-${id}`} onPress={() => { closeDrawer(); router.push({ pathname: "/(tabs)/images" as never, params: { model: id.startsWith("openrouter:") ? id : `openrouter:${id}` } as never }); }} className="mb-1 mr-3 rounded-xl border px-3 py-2" style={{ borderColor: colors.border, backgroundColor: colors.surface }}>
+                  <View className="flex-row-reverse items-center"><MaterialIcons name="image" size={16} color={colors.primary} /><View className="mr-2 flex-1"><Text numberOfLines={1} className="text-right text-[10px] font-bold text-foreground">{id}</Text><Text className="mt-0.5 text-right text-[9px] text-muted">{model.access ?? "غير محدد"} · {model.dailyLimit ?? "حسب المزود"}</Text></View></View>
+                </Pressable>;
+              })}
+              {!imageModels.data?.models?.length ? ["GPT Image", "Flux", "Stable Diffusion"].map((name) => (
+                <View key={`planned-image-${name}`} className="mb-1 mr-3 rounded-xl border px-3 py-2" style={{ borderColor: colors.border, backgroundColor: colors.surface, opacity: 0.68 }}>
+                  <View className="flex-row-reverse items-center"><MaterialIcons name="image" size={16} color={colors.muted} /><View className="mr-2 flex-1"><Text className="text-right text-[10px] font-bold text-foreground">{name}</Text><Text className="mt-0.5 text-right text-[9px] text-muted">قريبًا · يتطلب تفعيل مزود الصور</Text></View></View>
+                </View>
+              )) : null}
               <DrawerLink icon="smart-toy" label="النماذج المحلية" onPress={() => navigate("/(tabs)/local-models")} colors={colors} />
               <DrawerLink icon="language" label="أدوات الويب" onPress={() => navigate("/(tabs)/web-sites")} colors={colors} />
               <DrawerLink icon="settings" label="إعدادات التطبيق" onPress={() => navigate("/(tabs)/settings")} colors={colors} />
@@ -138,7 +152,7 @@ export function AppDrawerShell({ children }: { children: ReactNode }) {
               </View>
             </ScrollView>
           </View>
-        </Animated.View>
+        </Animated.View> : null}
       </View>
     </DrawerContext.Provider>
   );
