@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, subscriptions, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -104,9 +104,13 @@ export async function createConversation(userId: number, title = "محادثة �
 export async function recordUsage(input: {
   userId: number;
   model?: string | null;
+  provider?: string | null;
   promptTokens?: number | null;
   completionTokens?: number | null;
   requestKind?: string;
+  outcome?: string;
+  errorCode?: string | null;
+  estimatedCostUsd?: string | null;
 }) {
   const db = await getDb();
   if (!db) return;
@@ -114,10 +118,29 @@ export async function recordUsage(input: {
   await db.insert(usageEvents).values({
     userId: input.userId,
     model: input.model ?? null,
+    provider: input.provider ?? null,
     promptTokens: input.promptTokens ?? null,
     completionTokens: input.completionTokens ?? null,
     requestKind: input.requestKind ?? "chat",
+    outcome: input.outcome ?? "success",
+    errorCode: input.errorCode ?? null,
+    estimatedCostUsd: input.estimatedCostUsd ?? null,
   });
+}
+
+export async function getUserSubscription(userId: number) {
+  const db = await getDb();
+  if (!db) return { planKey: "free", status: "active" } as const;
+  const rows = await db.select().from(subscriptions).where(eq(subscriptions.userId, userId)).orderBy(desc(subscriptions.updatedAt)).limit(1);
+  return rows[0] ?? { planKey: "free", status: "active" } as const;
+}
+
+export async function ensureFreeSubscription(userId: number) {
+  const db = await getDb();
+  if (!db) return;
+  const existing = await getUserSubscription(userId);
+  if ("id" in existing) return;
+  await db.insert(subscriptions).values({ userId, planKey: "free", status: "active" });
 }
 
 export async function saveMessage(input: { conversationId: number; role: "system" | "user" | "assistant" | "tool"; content: string; model?: string | null }) {

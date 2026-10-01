@@ -1,5 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { Image, Pressable, Text, View, type ImageSourcePropType } from "react-native";
+import { useAppDrawer } from "@/components/app-drawer";
 import { useColors } from "@/hooks/use-colors";
 
 export type IconName = React.ComponentProps<typeof MaterialIcons>["name"];
@@ -24,6 +25,7 @@ export function BrandHeader({
   onPress?: () => void;
 }) {
   const colors = useColors();
+  const { openDrawer } = useAppDrawer();
   return (
     <View className="flex-row-reverse items-center justify-between">
       <View className="flex-row-reverse items-center gap-3">
@@ -33,19 +35,34 @@ export function BrandHeader({
           <Text className="mt-0.5 text-[23px] font-extrabold tracking-tight text-foreground text-right">{title}</Text>
         </View>
       </View>
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel="فتح الإشعارات"
-        style={({ pressed }) => [
-          { backgroundColor: colors.surface, borderColor: colors.border },
-          pressed && { opacity: 0.72, transform: [{ scale: 0.96 }] },
-        ]}
-        className="h-11 w-11 items-center justify-center rounded-2xl border"
-      >
-        <MaterialIcons name="notifications-none" size={23} color={colors.foreground} />
-        <View className="absolute right-2 top-2 h-2 w-2 rounded-full bg-primary" />
-      </Pressable>
+      <View className="flex-row-reverse items-center gap-2">
+        <Pressable
+          onPress={openDrawer}
+          accessibilityRole="button"
+          accessibilityLabel="فتح القائمة الجانبية"
+          style={({ pressed }) => [
+            { backgroundColor: colors.surface, borderColor: colors.border },
+            pressed && { opacity: 0.72, transform: [{ scale: 0.96 }] },
+          ]}
+          className="h-11 w-11 items-center justify-center rounded-2xl border"
+        >
+          <MaterialIcons name="menu" size={24} color={colors.foreground} />
+        </Pressable>
+        {onPress ? (
+          <Pressable
+            onPress={onPress}
+            accessibilityRole="button"
+            accessibilityLabel="إجراء الشاشة"
+            style={({ pressed }) => [
+              { backgroundColor: colors.surface, borderColor: colors.border },
+              pressed && { opacity: 0.72, transform: [{ scale: 0.96 }] },
+            ]}
+            className="h-11 w-11 items-center justify-center rounded-2xl border"
+          >
+            <MaterialIcons name="arrow-forward" size={22} color={colors.foreground} />
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }

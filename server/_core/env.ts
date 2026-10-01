@@ -10,5 +10,5 @@ export const ENV = {
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? openAiBase ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? process.env.OPENAI_API_KEY ?? "",
   maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES ?? 16 * 1024 * 1024),
-  allowedOrigins: (process.env.ALLOWED_ORIGINS ?? "").split(",").map((value) => value.trim()).filter(Boolean),
+  allowedOrigins: (process.env.ALLOWED_ORIGINS ?? "").split(",").map((value: string) => value.trim()).filter(Boolean),
 };

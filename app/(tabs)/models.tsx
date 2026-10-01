@@ -1,54 +1,216 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FlatList, Pressable, Text, TextInput, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { BrandHeader, SectionHeading, StatusBadge } from "@/components/chatbro-ui";
 import { useColors } from "@/hooks/use-colors";
+import { checkServerConnection } from "@/lib/_core/api";
+import { loadModelPreferences, toggleModelFavorite } from "@/lib/model-preferences";
 import { trpc } from "@/lib/trpc";
-import { chatBroModels, filterModels, isPlannedModel, type ChatBroModel } from "@/shared/chatbro-catalog";
+import { chatBroModels, filterModels, getModelTypeTags, isModelAvailableToSelect, type ChatBroModel } from "@/shared/chatbro-catalog";
 
-const filters = ["الكل", "محادثة", "صور", "صوت", "برمجة", "بحث"];
+const typeFilters = ["الكل", "محادثة", "فهم الصور", "إنشاء الصور", "صوت", "فيديو", "برمجة", "بحث ويب"];
+const providers: { key: NonNullable<ChatBroModel["providerKey"]>; label: string }[] = [
+  { key: "chatbro", label: "Chat Bro" },
+  { key: "builtIn", label: "الخادم المدمج" },
+  { key: "openrouter", label: "OpenRouter" },
+  { key: "anthropic", label: "Anthropic" },
+  { key: "gateway", label: "البوابات" },
+];
 
 export default function ModelsScreen() {
   const colors = useColors();
   const router = useRouter();
-  const [active, setActive] = useState("الكل");
+  const [activeType, setActiveType] = useState("الكل");
+  const [activeProvider, setActiveProvider] = useState("all");
   const [query, setQuery] = useState("");
-  const openRouterModels = trpc.models.openRouter.useQuery(undefined, { staleTime: 60_000, retry: 2 });
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
+  const [serverCapabilities, setServerCapabilities] = useState<Record<string, boolean> | null>(null);
+  const openRouterModels = trpc.models.openRouter.useQuery(undefined, { enabled: serverCapabilities?.openrouter === true, staleTime: 60_000, retry: 1 });
+  const builtInModels = trpc.models.builtIn.useQuery(undefined, { enabled: Boolean(serverCapabilities?.builtInLLM), staleTime: 60_000, retry: 1 });
+  const anthropicModels = trpc.models.anthropic.useQuery(undefined, { enabled: Boolean(serverCapabilities?.anthropic), staleTime: 60_000, retry: 1 });
+  const gatewayModels = trpc.models.gateways.useQuery(undefined, { enabled: Boolean(serverCapabilities?.gateway), staleTime: 60_000, retry: 1 });
+
+  useEffect(() => {
+    let active = true;
+    void checkServerConnection().then((result) => active && setServerCapabilities(result.capabilities ?? {}));
+    void loadModelPreferences().then((saved) => active && setFavoriteIds(new Set(saved.favorites.map((item) => item.id))));
+    return () => { active = false; };
+  }, []);
+
   const allModels = useMemo<ChatBroModel[]>(() => {
-    const dynamic = (openRouterModels.data?.models ?? []).map((model): ChatBroModel => ({
+    const searchTag = serverCapabilities?.openrouter ? ["بحث ويب"] : [];
+    const openRouter = (openRouterModels.data?.models ?? []).map((model): ChatBroModel => {
+      const candidate: ChatBroModel = {
+        name: model.name,
+        modelId: `openrouter:${model.id}`,
+        provider: "OpenRouter · خارجي",
+        providerKey: "openrouter",
+        icon: "hub",
+        tone: model.prompt === "0" && model.completion === "0" ? "full" : "limited",
+        status: model.prompt === "0" && model.completion === "0" ? "مجاني" : "متاح من OpenRouter",
+        limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب المزود",
+        category: "محادثة",
+        requiresKey: true,
+        localOnly: false,
+        runtime: "gateway",
+        inputModalities: model.inputModalities ?? [],
+        outputModalities: model.outputModalities ?? ["text"],
+        supportsVision: model.inputModalities?.includes("image"),
+        verified: true,
+        sourceUrl: "https://openrouter.ai/models",
+      };
+      return { ...candidate, types: [...new Set([...getModelTypeTags(candidate), ...searchTag])] };
+    });
+    const builtIn = (builtInModels.data?.models ?? []).map((model): ChatBroModel => ({
       name: model.name,
-      modelId: `openrouter:${model.id}`,
-      provider: "OpenRouter · خارجي",
-      icon: "hub",
-      tone: model.prompt === "0" && model.completion === "0" ? "full" : "limited",
-      status: model.prompt === "0" && model.completion === "0" ? "مجاني" : "متاح الآن",
-      limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب المزود",
+      modelId: `builtin:${model.id}`,
+      provider: `الخادم المدمج · ${model.provider}`,
+      providerKey: "builtIn",
+      icon: "auto-awesome",
+      tone: "limited",
+      status: "متاح من الخادم",
+      limit: "حسب إعداد المزود",
+      category: "محادثة",
+      requiresKey: false,
+      localOnly: false,
+      runtime: "cloud",
+      inputModalities: ["text"],
+      outputModalities: ["text"],
+      types: ["محادثة", ...searchTag, ...(/code|coder|program/i.test(model.id) ? ["برمجة"] : [])],
+      verified: true,
+    }));
+    const anthropic = (anthropicModels.data?.models ?? []).map((model): ChatBroModel => ({
+      name: `${model.name} · Anthropic`,
+      modelId: `anthropic:${model.id}`,
+      provider: "Anthropic · مباشر",
+      providerKey: "anthropic",
+      icon: "auto-awesome",
+      tone: "limited",
+      status: "متاح من Anthropic",
+      limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Anthropic",
       category: "محادثة",
       requiresKey: true,
       localOnly: false,
       runtime: "gateway",
-      supportsVision: /vision|vl|gemini|gpt-4o|qwen/i.test(model.id),
+      inputModalities: model.supportsVision ? ["text", "image"] : ["text"],
+      outputModalities: ["text"],
+      supportsVision: model.supportsVision,
+      types: ["محادثة", ...(model.supportsVision ? ["فهم الصور"] : []), ...searchTag],
       verified: true,
-      sourceUrl: "https://openrouter.ai/models",
     }));
-    const existing = new Set(chatBroModels.map((model) => model.modelId));
-    return [...chatBroModels.filter((model) => !model.localOnly), ...dynamic.filter((model) => !existing.has(model.modelId))];
-  }, [openRouterModels.data]);
-  const filtered = useMemo(() => filterModels(allModels, active, query), [active, allModels, query]);
+    const gateways = (gatewayModels.data?.models ?? []).map((model): ChatBroModel => {
+      const candidate: ChatBroModel = {
+        name: `${model.name} · ${model.provider}`,
+        modelId: model.id,
+        provider: `بوابة · ${model.provider}`,
+        providerKey: "gateway",
+        icon: "hub",
+        tone: "limited",
+        status: "متاح من البوابة",
+        limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب البوابة",
+        category: "محادثة",
+        requiresKey: true,
+        localOnly: false,
+        runtime: "gateway",
+        inputModalities: model.inputModalities ?? ["text"],
+        outputModalities: model.outputModalities ?? ["text"],
+        supportsVision: model.inputModalities?.includes("image"),
+        verified: true,
+      };
+      return { ...candidate, types: [...new Set([...getModelTypeTags(candidate), ...searchTag])] };
+    });
+    const configuredStatic = chatBroModels
+      .filter((model) => isModelAvailableToSelect(model, serverCapabilities))
+      .map((model) => ({ ...model, types: [...new Set([...(model.types ?? []), ...searchTag])] }));
+    const liveModels = [...builtIn, ...anthropic, ...gateways, ...openRouter];
+    const existing = new Set(configuredStatic.map((model) => model.modelId));
+    return [...configuredStatic, ...liveModels.filter((model) => !existing.has(model.modelId))];
+  }, [anthropicModels.data, builtInModels.data, gatewayModels.data, openRouterModels.data, serverCapabilities]);
+
+  const filtered = useMemo(() => filterModels(allModels, activeType, query)
+    .filter((model) => activeProvider === "all" || model.providerKey === activeProvider),
+  [activeProvider, activeType, allModels, query]);
+  const providerCounts = useMemo(() => new Set(allModels.map((model) => model.providerKey).filter(Boolean)), [allModels]);
+
+  const toggleFavorite = async (model: ChatBroModel) => {
+    const route = model.outputModalities?.includes("text") || !model.outputModalities?.length ? "chat" : "images";
+    const next = await toggleModelFavorite({ id: model.modelId, name: model.name, provider: model.provider, route });
+    setFavoriteIds(new Set(next.favorites.map((item) => item.id)));
+  };
+
+  const openModel = (model: ChatBroModel) => {
+    const imageOnly = activeType === "إنشاء الصور" && model.outputModalities?.includes("image");
+    const noTextOutput = Boolean(model.outputModalities?.length && !model.outputModalities.includes("text"));
+    if (imageOnly || noTextOutput) {
+      router.push({ pathname: "/(tabs)/images", params: { model: model.modelId } });
+      return;
+    }
+    router.push({ pathname: "/(tabs)/chat", params: { model: model.name, directModel: model.modelId } });
+  };
+
   return (
     <ScreenContainer className="px-5 pt-4">
       <BrandHeader title="النماذج" eyebrow="MODEL REGISTRY" onPress={() => router.push("/(tabs)/settings")} />
-      <Text className="mt-7 text-[25px] font-extrabold text-foreground text-right">اختر القوة المناسبة.</Text>
-      <Text className="mt-2 text-[12px] leading-5 text-muted text-right">النماذج السحابية تُحدّث من OpenRouter مباشرة. النماذج المحلية تعمل داخل الهاتف عبر llama.cpp وبشكل منفصل.</Text>
+      <Text className="mt-7 text-right text-[25px] font-extrabold text-foreground">اختر القوة المناسبة.</Text>
+      <Text className="mt-2 text-right text-[12px] leading-5 text-muted">صنّف الكتالوج حسب نوع الإدخال والإخراج أو مزود الخدمة. لا تظهر قدرة إلا إذا أبلغ عنها المزود؛ أداة إنشاء الصور تعمل من أي محادثة عند تهيئة مزود صور.</Text>
 
-      <View className="mt-5 flex-row-reverse items-center rounded-[18px] border bg-surface px-3" style={{ borderColor: colors.border }}><MaterialIcons name="search" size={20} color={colors.muted} /><TextInput value={query} onChangeText={setQuery} placeholder="ابحث عن نموذج أو مزود..." placeholderTextColor={colors.muted} className="h-11 flex-1 px-3 text-[13px] text-foreground" style={{ textAlign: "right", writingDirection: "rtl" }} /></View>
-      <FlatList data={filters} horizontal inverted showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 14 }} keyExtractor={(item) => item} renderItem={({ item }) => <Pressable onPress={() => setActive(item)} style={({ pressed }) => [{ backgroundColor: active === item ? colors.primary : colors.surface, borderColor: active === item ? colors.primary : colors.border }, pressed && { opacity: 0.72 }]} className="rounded-full border px-4 py-2"><Text className={active === item ? "text-[11px] font-bold text-[#062034]" : "text-[11px] font-semibold text-muted"}>{item}</Text></Pressable>} />
+      <View className="mt-5 flex-row-reverse items-center rounded-[18px] border bg-surface px-3" style={{ borderColor: colors.border }}>
+        <MaterialIcons name="search" size={20} color={colors.muted} />
+        <TextInput value={query} onChangeText={setQuery} placeholder="ابحث عن نموذج أو مزود..." placeholderTextColor={colors.muted} className="h-11 flex-1 px-3 text-[13px] text-foreground" style={{ textAlign: "right", writingDirection: "rtl" }} />
+      </View>
 
-      <View className="mb-3 flex-row-reverse items-center justify-between"><StatusBadge label={`${allModels.length} نموذجًا`} tone="full" /><Text className="text-[11px] text-muted">{openRouterModels.isFetching ? "تحديث الكتالوج…" : openRouterModels.data?.available ? "OpenRouter مباشر" : "الكتالوج السحابي غير متاح"}</Text></View>
-      <FlatList data={filtered} keyExtractor={(item) => item.modelId} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 32 }} renderItem={({ item }) => { const plannedModel = isPlannedModel(item.modelId); const directModel = item.modelId.startsWith("openrouter:") ? item.modelId : undefined; return <Pressable disabled={plannedModel} onPress={() => router.push({ pathname: "/(tabs)/chat", params: { model: item.name, ...(directModel ? { directModel } : {}) } })} style={({ pressed }) => [{ backgroundColor: colors.surface, borderColor: colors.border, opacity: plannedModel ? 0.7 : 1 }, pressed && { opacity: 0.75 }]} className="flex-row-reverse items-center rounded-[21px] border p-3.5"><View className="h-11 w-11 items-center justify-center rounded-[15px] bg-[#E6F8FD]"><MaterialIcons name={item.icon as never} size={21} color={plannedModel ? colors.muted : "#0787B4"} /></View><View className="mr-3 flex-1"><View className="flex-row-reverse items-center justify-between"><Text className="text-[13px] font-bold text-foreground">{item.name}</Text><StatusBadge label={item.status} tone={item.tone} /></View><Text className="mt-1 text-[11px] text-muted text-right">{item.provider} · {item.category}</Text><Text className="mt-1 text-[10px] text-muted text-right">{item.limit}</Text></View>{plannedModel ? <MaterialIcons name="schedule" size={20} color={colors.muted} /> : <MaterialIcons name="chevron-left" size={20} color={colors.muted} />}</Pressable>; }} ListEmptyComponent={<View className="items-center py-10"><SectionHeading title="لم نجد هذا النموذج" /><Text className="text-[12px] text-muted">جرّب كلمة بحث مختلفة.</Text></View>} />
+      <Text className="mt-4 text-right text-[10px] font-bold text-muted">التصنيف حسب النوع</Text>
+      <FlatList data={typeFilters} horizontal inverted showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 10 }} keyExtractor={(item) => item} renderItem={({ item }) => (
+        <Pressable onPress={() => setActiveType(item)} style={({ pressed }) => [{ backgroundColor: activeType === item ? colors.primary : colors.surface, borderColor: activeType === item ? colors.primary : colors.border }, pressed && { opacity: 0.72 }]} className="rounded-full border px-4 py-2">
+          <Text className={activeType === item ? "text-[10px] font-bold text-[#062034]" : "text-[10px] font-semibold text-muted"}>{item}</Text>
+        </Pressable>
+      )} />
+
+      <Text className="mt-1 text-right text-[10px] font-bold text-muted">المزوّد</Text>
+      <FlatList data={[{ key: "all", label: "الكل" }, ...providers.filter((provider) => providerCounts.has(provider.key))]} horizontal inverted showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 9, paddingBottom: 14 }} keyExtractor={(item) => item.key} renderItem={({ item }) => (
+        <Pressable onPress={() => setActiveProvider(item.key)} style={({ pressed }) => [{ backgroundColor: activeProvider === item.key ? "#DDF8FF" : colors.surface, borderColor: activeProvider === item.key ? "#76DDF3" : colors.border }, pressed && { opacity: 0.72 }]} className="rounded-full border px-3.5 py-2">
+          <Text className="text-[10px] font-semibold text-foreground">{item.label}</Text>
+        </Pressable>
+      )} />
+
+      <View className="mb-3 flex-row-reverse items-center justify-between">
+        <StatusBadge label={`${filtered.length} نموذجًا`} tone="full" />
+        <Text className="text-right text-[10px] text-muted">{openRouterModels.isFetching || builtInModels.isFetching || anthropicModels.isFetching || gatewayModels.isFetching ? "تحديث الكتالوج…" : allModels.length ? "بيانات مباشرة من المزودين المهيئين" : "لا يوجد مزود سحابي مهيأ"}</Text>
+      </View>
+      <FlatList
+        data={filtered}
+        keyExtractor={(item) => item.modelId || "default"}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ gap: 9, paddingBottom: 32 }}
+        renderItem={({ item }) => {
+          const tags = getModelTypeTags(item).slice(0, 4);
+          const favorite = favoriteIds.has(item.modelId);
+          return (
+            <View className="flex-row-reverse items-center rounded-[20px] border p-3" style={{ backgroundColor: colors.surface, borderColor: colors.border }}>
+              <Pressable onPress={() => openModel(item)} className="min-h-[78px] flex-1 flex-row-reverse items-center">
+                <View className="h-11 w-11 items-center justify-center rounded-[15px] bg-[#E6F8FD]"><MaterialIcons name={item.icon as never} size={21} color="#0787B4" /></View>
+                <View className="mr-3 flex-1">
+                  <View className="flex-row-reverse items-center justify-between gap-2"><Text numberOfLines={1} className="flex-1 text-right text-[12px] font-bold text-foreground">{item.name}</Text><StatusBadge label={item.status} tone={item.tone} /></View>
+                  <Text numberOfLines={1} className="mt-1 text-right text-[10px] text-muted">{item.provider} · {item.limit}</Text>
+                  <View className="mt-1.5 flex-row-reverse flex-wrap gap-1">
+                    {tags.map((tag) => <View key={`${item.modelId}-${tag}`} className="rounded-full bg-[#E8F5F9] px-2 py-1"><Text className="text-[9px] font-semibold text-[#27687B]">{tag}</Text></View>)}
+                    {item.inputModalities?.includes("image") ? <Text className="self-center text-[9px] text-muted">إدخال صور</Text> : null}
+                    {item.outputModalities?.includes("image") ? <Text className="self-center text-[9px] text-muted">إخراج صور</Text> : null}
+                  </View>
+                </View>
+                <MaterialIcons name={activeType === "إنشاء الصور" || (item.outputModalities?.length && !item.outputModalities.includes("text")) ? "image" : "chevron-left"} size={19} color={colors.muted} />
+              </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel={favorite ? "إزالة من المفضلة" : "إضافة إلى المفضلة"} onPress={() => void toggleFavorite(item)} className="ml-1 h-10 w-10 items-center justify-center rounded-xl">
+                <MaterialIcons name={favorite ? "star" : "star-outline"} size={21} color={favorite ? "#E1A526" : colors.muted} />
+              </Pressable>
+            </View>
+          );
+        }}
+        ListEmptyComponent={<View className="items-center py-10"><SectionHeading title="لم نجد نماذج مطابقة" /><Text className="text-[12px] text-muted">جرّب نوعًا أو مزودًا آخر أو امسح البحث.</Text></View>}
+      />
     </ScreenContainer>
   );
 }

@@ -6,7 +6,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as Speech from "expo-speech";
 import * as FileSystem from "expo-file-system/legacy";
 import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from "expo-audio";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -25,8 +25,10 @@ import {
 import { ScreenContainer } from "@/components/screen-container";
 import { BrandHeader, StatusBadge } from "@/components/chatbro-ui";
 import { useColors } from "@/hooks/use-colors";
+import { checkServerConnection } from "@/lib/_core/api";
+import { recordModelUse } from "@/lib/model-preferences";
 import { trpc } from "@/lib/trpc";
-import { chatBroModels, getModelByName, isPlannedModel, type ChatBroModel } from "@/shared/chatbro-catalog";
+import { chatBroModels, getModelTypeTags, isModelAvailableToSelect, isPlannedModel, type ChatBroModel } from "@/shared/chatbro-catalog";
 import { listInstalledLocalModels, type InstalledLocalModel } from "@/lib/local-runtime";
 
 type Attachment = {
@@ -58,6 +60,7 @@ const welcome = (model?: string): Message => ({
 
 export default function ChatScreen() {
   const colors = useColors();
+  const router = useRouter();
   const params = useLocalSearchParams<{ prompt?: string; model?: string; directModel?: string }>();
   const initialModel = params.model ?? "";
   const [selectedModel, setSelectedModel] = useState(initialModel);
@@ -72,6 +75,7 @@ export default function ChatScreen() {
   const [modelsOpen, setModelsOpen] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [localModels, setLocalModels] = useState<InstalledLocalModel[]>([]);
+  const [serverCapabilities, setServerCapabilities] = useState<Record<string, boolean> | null>(null);
   const completeChat = trpc.chat.complete.useMutation();
   const uploadFile = trpc.attachments.upload.useMutation();
   const generateImage = trpc.images.generate.useMutation();
@@ -79,17 +83,60 @@ export default function ChatScreen() {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder);
   const historyModel = selectedModel || "Chat Bro";
-  const selectedCatalogModel = getModelByName(selectedModel);
   const openRouterModels = trpc.models.openRouter.useQuery(undefined, { staleTime: 60_000, retry: 2 });
-  const dynamicOpenRouterModels = useMemo<ChatBroModel[]>(() => (openRouterModels.data?.models ?? []).map((model): ChatBroModel => ({
-    name: model.name, modelId: `openrouter:${model.id}`, provider: "OpenRouter", icon: "hub",
-    tone: model.prompt === "0" && model.completion === "0" ? "full" : "limited",
-    status: model.prompt === "0" && model.completion === "0" ? "مجاني" : "متاح",
-    limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب المزود", category: "OpenRouter", requiresKey: true, localOnly: false, runtime: "gateway" as const, verified: true,
-  })), [openRouterModels.data]);
-  const cloudChatModels = useMemo(() => [...chatBroModels.filter((m) => !m.localOnly), ...dynamicOpenRouterModels.filter((m) => !chatBroModels.some((x) => x.modelId === m.modelId))], [dynamicOpenRouterModels]);
-  const selectedRuntimeModel = selectedCatalogModel?.modelId ?? cloudChatModels.find((m) => m.name === selectedModel)?.modelId;
+  const builtInModels = trpc.models.builtIn.useQuery(undefined, { enabled: Boolean(serverCapabilities?.builtInLLM), staleTime: 60_000, retry: 1 });
+  const anthropicModels = trpc.models.anthropic.useQuery(undefined, { enabled: Boolean(serverCapabilities?.anthropic), staleTime: 60_000, retry: 1 });
+  const geminiModels = trpc.models.gemini.useQuery(undefined, { enabled: Boolean(serverCapabilities?.gemini), staleTime: 60_000, retry: 1 });
+  const groqModels = trpc.models.groq.useQuery(undefined, { enabled: Boolean(serverCapabilities?.groq), staleTime: 60_000, retry: 1 });
+  const cloudflareModels = trpc.models.cloudflare.useQuery(undefined, { enabled: Boolean(serverCapabilities?.cloudflare), staleTime: 60_000, retry: 1 });
+  const gatewayModels = trpc.models.gateways.useQuery(undefined, { enabled: Boolean(serverCapabilities?.gateway), staleTime: 60_000, retry: 1 });
+  const dynamicOpenRouterModels = useMemo<ChatBroModel[]>(() => (openRouterModels.data?.models ?? []).filter((model) => !model.outputModalities?.length || model.outputModalities.includes("text")).map((model) => {
+    const candidate: ChatBroModel = {
+      name: model.name, modelId: `openrouter:${model.id}`, provider: "OpenRouter", providerKey: "openrouter", icon: "hub",
+      tone: model.prompt === "0" && model.completion === "0" ? "full" : "limited",
+      status: model.prompt === "0" && model.completion === "0" ? "مجاني" : "متاح",
+      limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب المزود", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway",
+      inputModalities: model.inputModalities ?? [], outputModalities: model.outputModalities ?? ["text"], supportsVision: model.inputModalities?.includes("image"), verified: true,
+    };
+    return { ...candidate, types: getModelTypeTags(candidate) };
+  }), [openRouterModels.data]);
+  const dynamicBuiltInModels = useMemo<ChatBroModel[]>(() => (builtInModels.data?.models ?? []).map((model) => ({
+    name: model.name, modelId: `builtin:${model.id}`, provider: `الخادم المدمج · ${model.provider}`, providerKey: "builtIn", icon: "auto-awesome", tone: "limited",
+    status: "متاح من الخادم", limit: "حسب إعداد المزود", category: "محادثة", requiresKey: false, localOnly: false, runtime: "cloud", inputModalities: ["text"], outputModalities: ["text"], types: ["محادثة"], verified: true,
+  })), [builtInModels.data]);
+  const dynamicGeminiModels = useMemo<ChatBroModel[]>(() => (geminiModels.data?.models ?? []).map((model) => ({
+    name: `${model.name} · Gemini`, modelId: `gemini:${model.id}`, provider: "Google Gemini · مباشر", providerKey: "gateway", icon: "auto-awesome", tone: "limited",
+    status: "متاح من Gemini", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Google", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway",
+    inputModalities: model.supportsVision ? ["text", "image"] : ["text"], outputModalities: ["text"], supportsVision: model.supportsVision, verified: true, types: ["محادثة", ...(model.supportsVision ? ["فهم الصور"] : [])],
+  })), [geminiModels.data]);
+  const dynamicGroqModels = useMemo<ChatBroModel[]>(() => (groqModels.data?.models ?? []).map((model) => ({
+    name: `${model.name} · Groq`, modelId: `groq:${model.id}`, provider: "Groq · مباشر", providerKey: "gateway", icon: "speed", tone: "limited",
+    status: "متاح من Groq", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Groq", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway",
+    inputModalities: ["text"], outputModalities: ["text"], supportsVision: false, verified: true, types: ["محادثة", "برمجة"],
+  })), [groqModels.data]);
+  const dynamicCloudflareModels = useMemo<ChatBroModel[]>(() => (cloudflareModels.data?.models ?? []).map((model) => ({
+    name: `${model.name} · Cloudflare`, modelId: `cloudflare:${model.id}`, provider: "Cloudflare Workers AI", providerKey: "gateway", icon: "cloud", tone: "limited",
+    status: "متاح من Cloudflare", limit: "حسب حساب Cloudflare", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway",
+    inputModalities: ["text"], outputModalities: ["text"], supportsVision: false, verified: true, types: ["محادثة", "برمجة"],
+  })), [cloudflareModels.data]);
+  const dynamicAnthropicModels = useMemo<ChatBroModel[]>(() => (anthropicModels.data?.models ?? []).map((model) => ({
+    name: `${model.name} · Anthropic`, modelId: `anthropic:${model.id}`, provider: "Anthropic · مباشر", providerKey: "anthropic", icon: "auto-awesome", tone: "limited",
+    status: "متاح من Anthropic", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Anthropic", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway", inputModalities: model.supportsVision ? ["text", "image"] : ["text"], outputModalities: ["text"], types: ["محادثة", ...(model.supportsVision ? ["فهم الصور"] : [])], supportsVision: model.supportsVision, verified: true,
+  })), [anthropicModels.data]);
+  const dynamicGatewayModels = useMemo<ChatBroModel[]>(() => (gatewayModels.data?.models ?? []).filter((model) => !model.outputModalities?.length || model.outputModalities.includes("text")).map((model) => ({
+    name: `${model.name} · ${model.provider}`, modelId: model.id, provider: `بوابة · ${model.provider}`, providerKey: "gateway", icon: "hub", tone: "limited",
+    status: "متاح من البوابة", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب البوابة", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway", inputModalities: model.inputModalities ?? [], outputModalities: model.outputModalities ?? ["text"], supportsVision: model.inputModalities?.includes("image"), verified: true,
+  })), [gatewayModels.data]);
+  const cloudChatModels = useMemo(() => {
+    const liveModels = [...dynamicBuiltInModels, ...dynamicGeminiModels, ...dynamicGroqModels, ...dynamicCloudflareModels, ...dynamicAnthropicModels, ...dynamicGatewayModels, ...dynamicOpenRouterModels];
+    const staticModels = chatBroModels.filter((model) => isModelAvailableToSelect(model, serverCapabilities));
+    const existing = new Set(staticModels.map((model) => model.modelId));
+    return [...staticModels, ...liveModels.filter((model) => !existing.has(model.modelId))];
+  }, [dynamicAnthropicModels, dynamicBuiltInModels, dynamicCloudflareModels, dynamicGeminiModels, dynamicGatewayModels, dynamicGroqModels, dynamicOpenRouterModels, serverCapabilities]);
+  const selectedCatalogModel = cloudChatModels.find((model) => model.name === selectedModel);
+  const selectedRuntimeModel = selectedCatalogModel?.modelId;
   useEffect(() => { let active = true; listInstalledLocalModels().then((items) => active && setLocalModels(items)); return () => { active = false; }; }, []);
+  useEffect(() => { let active = true; void checkServerConnection().then((result) => active && setServerCapabilities(result.capabilities ?? {})); return () => { active = false; }; }, []);
 
   useEffect(() => {
     setLoadedHistory("");
@@ -124,6 +171,11 @@ export default function ChatScreen() {
     () => ["لخّص هذا الملف", "حلّل الصورة المرفقة", "اكتب خطة تطبيق"],
     [],
   );
+  const localModelSelected = localModels.some((model) => model.name === selectedModel);
+  const canUseWebSearch = Boolean(serverCapabilities?.openrouter) && !localModelSelected;
+  const canGenerateImage = Boolean(serverCapabilities?.openrouter || serverCapabilities?.forgeImages);
+  const canAttachImage = !localModelSelected && (!selectedModel || Boolean(selectedCatalogModel?.supportsVision || selectedCatalogModel?.inputModalities?.includes("image")));
+  useEffect(() => { if (localModelSelected) setWebSearchEnabled(false); }, [localModelSelected]);
 
   const addImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -231,8 +283,35 @@ export default function ChatScreen() {
   const sendMessage = async () => {
     const text = input.trim();
     if ((!text && attachments.length === 0) || isTyping) return;
+    const localModel = localModels.find((model) => model.name === selectedModel);
+    const isImageCommand = /^\/image(?:\s|$)/i.test(text);
+    const imagePrompt = text.replace(/^\/image(?:\s+|$)/i, "").trim();
+    if (localModel && attachments.length) {
+      Alert.alert("المحادثة المحلية نصية", "النماذج المثبتة حاليًا لا تدعم الصور أو الملفات. لن تُرفع المرفقات إلى الخادم.");
+      return;
+    }
+    if (webSearchEnabled && localModel) {
+      Alert.alert("البحث غير متاح محليًا", "للحفاظ على خصوصية المحادثة المحلية، لا تُرسل رسائلها إلى الإنترنت. اختر نموذجًا سحابيًا للبحث.");
+      return;
+    }
+    if (webSearchEnabled && !serverCapabilities?.openrouter) {
+      Alert.alert("البحث غير مهيأ", "بحث الويب يحتاج مفتاح OpenRouter مضبوطًا على الخادم.");
+      return;
+    }
+    if (isImageCommand && !imagePrompt) {
+      Alert.alert("أضف وصف الصورة", "اكتب وصفًا بعد /image ثم أرسل الطلب.");
+      return;
+    }
+    if (isImageCommand && attachments.length) {
+      Alert.alert("أنشئ صورة من وصف نصي", "أزل المرفقات قبل توليد صورة جديدة.");
+      return;
+    }
+    if (isImageCommand && !canGenerateImage) {
+      Alert.alert("توليد الصور غير مهيأ", "يلزم تفعيل OpenRouter أو Forge ImageService في إعدادات الخادم.");
+      return;
+    }
     setIsTyping(true);
-    const isLocalConversation = Boolean(selectedModel && localModels.some((m) => m.name === selectedModel));
+    const isLocalConversation = Boolean(localModel);
     let uploadedAttachments: Attachment[];
     try {
       uploadedAttachments = isLocalConversation ? attachments : await Promise.all(attachments.map(uploadAttachment));
@@ -258,9 +337,9 @@ export default function ChatScreen() {
     setMessages((current) => [...current, userMessage]);
     setInput("");
     setAttachments([]);
-    if (/^\/image\s+/i.test(text)) {
+    if (isImageCommand) {
       try {
-        const result = await generateImage.mutateAsync({ prompt: text.replace(/^\/image\s+/i, "") });
+        const result = await generateImage.mutateAsync({ prompt: imagePrompt });
         setMessages((current) => [...current, { id: `${Date.now()}-image`, role: "assistant", text: "تم إنشاء الصورة.", time: "الآن", attachments: [{ uri: result.url ?? "", remoteUrl: result.url, name: "generated.png", mimeType: "image/png", kind: "image" }] }]);
       } catch (error) {
         setMessages((current) => [...current, { id: `${Date.now()}-image-error`, role: "assistant", text: error instanceof Error ? error.message : "تعذر إنشاء الصورة.", time: "الآن" }]);
@@ -268,9 +347,15 @@ export default function ChatScreen() {
       setIsTyping(false);
       return;
     }
+    void recordModelUse({
+      id: localModel ? `local:${localModel.id}` : selectedRuntimeModel || "chatbro:default",
+      name: selectedModel || "المساعد العام",
+      provider: localModel ? "محلي على الجهاز" : selectedCatalogModel?.provider ?? "Chat Bro · الخادم",
+      route: localModel ? "local" : "chat",
+    }).catch(() => undefined);
     try {
-      if (selectedModel && localModels.some((m) => m.name === selectedModel)) {
-        const local = localModels.find((m) => m.name === selectedModel)!;
+      if (localModel) {
+        const local = localModel;
         const { completeLocal } = await import("@/lib/local-runtime");
         const reply = await completeLocal(local, [
           { role: "system", content: "أنت مساعد محلي داخل Chat Bro. لا تدّعي الوصول إلى الإنترنت. إذا احتاج السؤال معلومات حديثة فاذكر ذلك بوضوح." },
@@ -535,21 +620,45 @@ export default function ChatScreen() {
               ))}
             </ScrollView>
           ) : null}
-          <Pressable
-            onPress={() => setWebSearchEnabled((enabled) => !enabled)}
-            style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1, alignSelf: "flex-end" }]}
-            className="mb-2 flex-row-reverse items-center gap-1 rounded-full border px-3 py-1.5"
-          >
-            <MaterialIcons name="language" size={15} color={webSearchEnabled ? colors.primary : colors.muted} />
-            <Text className="text-[10px] font-bold" style={{ color: webSearchEnabled ? colors.primary : colors.muted }}>
-              {webSearchEnabled ? "بحث الويب مفعّل" : "بحث الويب"}
-            </Text>
-          </Pressable>
+          <View className="mb-2 flex-row-reverse items-center justify-between gap-2">
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !canUseWebSearch }}
+              disabled={!canUseWebSearch}
+              onPress={() => setWebSearchEnabled((enabled) => !enabled)}
+              style={({ pressed }) => [{ opacity: !canUseWebSearch ? 0.45 : pressed ? 0.7 : 1 }]}
+              className="flex-row-reverse items-center gap-1 rounded-full border px-3 py-1.5"
+            >
+              <MaterialIcons name="language" size={15} color={webSearchEnabled ? colors.primary : colors.muted} />
+              <Text className="text-[10px] font-bold" style={{ color: webSearchEnabled ? colors.primary : colors.muted }}>
+                {localModelSelected ? "المحلي بلا إنترنت" : !serverCapabilities?.openrouter ? "البحث غير مهيأ" : webSearchEnabled ? "بحث الويب مفعّل" : "بحث الويب"}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="إنشاء صورة بالذكاء الاصطناعي"
+              accessibilityState={{ disabled: !canGenerateImage }}
+              disabled={!canGenerateImage}
+              onPress={() => {
+                const draftedPrompt = input.trim().replace(/^\/image(?:\s+|$)/i, "");
+                router.push({ pathname: "/(tabs)/images", params: draftedPrompt ? { prompt: draftedPrompt } : {} });
+              }}
+              style={({ pressed }) => [{ opacity: !canGenerateImage ? 0.45 : pressed ? 0.7 : 1 }]}
+              className="flex-row-reverse items-center gap-1 rounded-full border px-3 py-1.5"
+            >
+              <MaterialIcons name="auto-awesome" size={15} color={canGenerateImage ? colors.primary : colors.muted} />
+              <Text className="text-[10px] font-bold" style={{ color: canGenerateImage ? colors.primary : colors.muted }}>إنشاء صورة</Text>
+            </Pressable>
+          </View>
+          {webSearchEnabled ? <Text className="mb-2 text-right text-[9px] leading-4 text-muted">عند التفعيل يُرسل نص السؤال إلى الخادم وOpenRouter للبحث، وقد يُحتسب استخدام إضافي. لا يُستخدم في المحادثة المحلية.</Text> : null}
+          {canGenerateImage ? <Text className="mb-2 text-right text-[9px] text-muted">توليد الصور يرسل الوصف إلى الخادم وقد يستهلك رصيد مزود الذكاء الاصطناعي.</Text> : null}
+          {selectedModel && !localModelSelected && !canAttachImage ? <Text className="mb-2 text-right text-[9px] text-muted">هذا النموذج لا يعلن دعم إدخال الصور؛ اختر نموذجًا يدعم فهم الصور أو استخدم أداة إنشاء الصور.</Text> : null}
           <View className="flex-row-reverse items-end gap-2">
             <Pressable
+              disabled={!canAttachImage}
               onPress={addImage}
               style={({ pressed }) => [
-                { backgroundColor: "#E6F8FD" },
+                { backgroundColor: "#E6F8FD", opacity: canAttachImage ? 1 : 0.4 },
                 pressed && { opacity: 0.7 },
               ]}
               className="h-10 w-10 items-center justify-center rounded-[14px]"
@@ -557,9 +666,10 @@ export default function ChatScreen() {
               <MaterialIcons name="image" size={20} color="#0787B4" />
             </Pressable>
             <Pressable
+              disabled={localModelSelected}
               onPress={addFile}
               style={({ pressed }) => [
-                { backgroundColor: "#E6F8FD" },
+                { backgroundColor: "#E6F8FD", opacity: localModelSelected ? 0.4 : 1 },
                 pressed && { opacity: 0.7 },
               ]}
               className="h-10 w-10 items-center justify-center rounded-[14px]"
@@ -568,7 +678,8 @@ export default function ChatScreen() {
             </Pressable>
             <Pressable
               onPress={() => void toggleRecording()}
-              style={({ pressed }) => [{ backgroundColor: recorderState.isRecording ? "#FFD8D8" : "#E6F8FD" }, pressed && { opacity: 0.7 }]}
+              disabled={localModelSelected}
+              style={({ pressed }) => [{ backgroundColor: recorderState.isRecording ? "#FFD8D8" : "#E6F8FD", opacity: localModelSelected ? 0.4 : 1 }, pressed && { opacity: 0.7 }]}
               className="h-10 w-10 items-center justify-center rounded-[14px]"
             >
               <MaterialIcons name={recorderState.isRecording ? "stop" : "mic"} size={20} color={recorderState.isRecording ? "#C62828" : "#0787B4"} />

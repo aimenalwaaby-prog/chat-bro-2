@@ -118,7 +118,7 @@ const config: ExpoConfig = {
       "expo-build-properties",
       {
         android: {
-            // Include both ABIs for compatibility with older XCover variants.
+            // Keep the release focused on current 64-bit Android phones; 32-bit-only devices are not included.
             buildArchs: ["arm64-v8a"],
           minSdkVersion: 24,
         },

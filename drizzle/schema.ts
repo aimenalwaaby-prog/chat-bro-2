@@ -20,6 +20,20 @@ export const users = mysqlTable("users", {
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
+export const subscriptions = mysqlTable("subscriptions", {
+  id: bigint("id", { mode: "number" }).autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  planKey: varchar("planKey", { length: 32 }).notNull().default("free"),
+  status: varchar("status", { length: 32 }).notNull().default("active"),
+  provider: varchar("provider", { length: 48 }),
+  providerSubscriptionId: varchar("providerSubscriptionId", { length: 255 }),
+  startedAt: timestamp("startedAt").defaultNow().notNull(),
+  endsAt: timestamp("endsAt"),
+  canceledAt: timestamp("canceledAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export const conversations = mysqlTable("conversations", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull(),
@@ -44,9 +58,13 @@ export const usageEvents = mysqlTable("usage_events", {
   id: bigint("id", { mode: "number" }).autoincrement().primaryKey(),
   userId: int("userId").notNull(),
   model: varchar("model", { length: 160 }),
+  provider: varchar("provider", { length: 64 }),
   promptTokens: int("promptTokens"),
   completionTokens: int("completionTokens"),
   requestKind: varchar("requestKind", { length: 32 }).notNull().default("chat"),
+  outcome: varchar("outcome", { length: 24 }).notNull().default("success"),
+  errorCode: varchar("errorCode", { length: 64 }),
+  estimatedCostUsd: varchar("estimatedCostUsd", { length: 32 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

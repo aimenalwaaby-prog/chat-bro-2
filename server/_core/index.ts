@@ -81,6 +81,10 @@ async function startServer() {
       capabilities: {
         builtInLLM: Boolean(ENV.forgeApiKey),
         openrouter: Boolean(process.env.OPENROUTER_API_KEY),
+        gemini: Boolean(process.env.GEMINI_API_KEY),
+        groq: Boolean(process.env.GROQ_API_KEY),
+        cloudflare: Boolean(process.env.CLOUDFLARE_ACCOUNT_ID && (process.env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_API_KEY)),
+        forgeImages: Boolean(process.env.BUILT_IN_FORGE_API_KEY && process.env.BUILT_IN_FORGE_API_URL),
         anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
         gateway: Boolean(process.env.MODEL_GATEWAY_BASE_URL || process.env.MODEL_GATEWAYS_JSON),
       },

@@ -1,16 +1,23 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import * as ImagePicker from "expo-image-picker";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Image, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
+import { Alert, Image, Linking, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { BrandHeader, SectionHeading } from "@/components/chatbro-ui";
 import { useColors } from "@/hooks/use-colors";
 import { checkServerConnection } from "@/lib/_core/api";
 import * as Auth from "@/lib/_core/auth";
-import { chatBroModels } from "@/shared/chatbro-catalog";
+import { chatBroModels, isModelAvailableToSelect } from "@/shared/chatbro-catalog";
 
 const profileTypes = ["طالب", "مطور", "باحث", "صانع محتوى", "مستخدم عام"];
+const providerFlags = [
+  { key: "builtInLLM", label: "الخادم المدمج" },
+  { key: "openrouter", label: "OpenRouter" },
+  { key: "anthropic", label: "Anthropic" },
+  { key: "gateway", label: "بوابات النماذج" },
+  { key: "forgeImages", label: "Forge · إنشاء الصور" },
+];
 
 export default function SettingsScreen() {
   const colors = useColors();
@@ -22,7 +29,15 @@ export default function SettingsScreen() {
   const [bio, setBio] = useState("");
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [notifications, setNotifications] = useState(true);
-  const [server, setServer] = useState<{ ok: boolean; latencyMs: number; url: string } | null>(null);
+  const [server, setServer] = useState<{ ok: boolean; latencyMs: number; url: string; capabilities?: Record<string, boolean> } | null>(null);
+
+  const openContactLink = async (url: string) => {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert("تعذر فتح الرابط", "تأكد من توفر تطبيق مناسب على جهازك ثم حاول مرة أخرى.");
+    }
+  };
 
   useEffect(() => {
     void Auth.getLocalProfile().then((saved) => {
@@ -152,7 +167,7 @@ export default function SettingsScreen() {
             </View>
             <Text className="mb-2 text-right text-[11px] font-bold text-foreground">النماذج المفضلة (حتى 5)</Text>
             <View className="mb-4 flex-row-reverse flex-wrap gap-2">
-              {chatBroModels.filter((model) => !model.localOnly).map((model) => <Pressable key={model.name} onPress={() => toggleFavorite(model.name)} className="rounded-full border px-3 py-2" style={{ borderColor: favoriteModels.includes(model.name) ? colors.primary : colors.border, backgroundColor: favoriteModels.includes(model.name) ? "#E6F8FD" : colors.surface }}><Text className="text-[10px] font-semibold text-foreground">{model.name}</Text></Pressable>)}
+              {chatBroModels.filter((model) => isModelAvailableToSelect(model, server?.capabilities)).map((model) => <Pressable key={model.name} onPress={() => toggleFavorite(model.name)} className="rounded-full border px-3 py-2" style={{ borderColor: favoriteModels.includes(model.name) ? colors.primary : colors.border, backgroundColor: favoriteModels.includes(model.name) ? "#E6F8FD" : colors.surface }}><Text className="text-[10px] font-semibold text-foreground">{model.name}</Text></Pressable>)}
             </View>
             <View className="flex-row-reverse gap-2">
               <Pressable onPress={() => void saveProfile()} className="flex-1 rounded-2xl bg-primary px-3 py-3"><Text className="text-center text-[11px] font-bold text-[#062034]">حفظ الملف</Text></Pressable>
@@ -166,6 +181,48 @@ export default function SettingsScreen() {
           <View className="flex-row-reverse items-center justify-between">
             <View className="flex-row-reverse items-center gap-3"><View className={`h-10 w-10 items-center justify-center rounded-2xl ${server?.ok ? "bg-[#E5F8EF]" : "bg-[#FFF0E8]"}`}><MaterialIcons name={server?.ok ? "cloud-done" : "cloud-off"} size={20} color={server?.ok ? "#18885D" : "#C86B45"} /></View><View><Text className="text-right text-[12px] font-bold text-foreground">اتصال الخادم</Text><Text className="mt-1 text-right text-[10px] text-muted">{server ? (server.ok ? `متصل · ${server.latencyMs}ms` : "غير متاح حاليًا") : "جارٍ الفحص..."}</Text></View></View>
             <Pressable onPress={() => void checkServerConnection().then(setServer)} className="rounded-xl border px-3 py-2" style={{ borderColor: colors.border }}><Text className="text-[10px] font-bold text-primary">فحص</Text></Pressable>
+          </View>
+          {server?.capabilities ? <>
+            <View className="mt-3 flex-row-reverse flex-wrap gap-2">
+              {providerFlags.map(({ key, label }) => {
+                const configured = Boolean(server.capabilities?.[key]);
+                return <View key={key} className="rounded-full border px-3 py-2" style={{ borderColor: configured ? "#A6DEC6" : colors.border, backgroundColor: configured ? "#E8F8EE" : colors.surface }}><Text className="text-[10px] font-semibold" style={{ color: configured ? "#176B3D" : colors.muted }}>{label} · {configured ? "مهيأ" : "غير مهيأ"}</Text></View>;
+              })}
+            </View>
+            <Text className="mt-2 text-right text-[9px] leading-4 text-muted">تعكس العلامات وجود إعدادات الخادم فقط، ولا تكشف المفاتيح أو تؤكد صلاحيتها. مسار Forge للصور منفصل عن مفتاح النماذج النصية.</Text>
+          </> : null}
+        </View>
+
+        <View className="mt-6 rounded-[22px] border bg-surface p-4" style={{ borderColor: colors.border }}>
+          <SectionHeading title="تواصل مع المطور" />
+          <Text className="mt-2 text-right text-[10px] leading-5 text-muted">للاستفسارات أو الملاحظات، يمكنك التواصل مباشرة عبر واتساب أو البريد الإلكتروني.</Text>
+          <View className="mt-3 gap-2">
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="التواصل مع المطور عبر واتساب"
+              onPress={() => void openContactLink("https://wa.me/967784755343")}
+              className="flex-row-reverse items-center rounded-2xl bg-[#E8F8EE] px-4 py-3"
+            >
+              <MaterialIcons name="chat" size={21} color="#168A4A" />
+              <View className="mr-3 flex-1">
+                <Text className="text-right text-[12px] font-bold text-[#176B3D]">واتساب</Text>
+                <Text className="mt-1 text-right text-[10px] text-[#37845A]">784755343</Text>
+              </View>
+              <MaterialIcons name="open-in-new" size={17} color="#37845A" />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="إرسال بريد إلكتروني إلى المطور"
+              onPress={() => void openContactLink("mailto:aimenalwwaby@gmail.com")}
+              className="flex-row-reverse items-center rounded-2xl bg-[#EAF5FB] px-4 py-3"
+            >
+              <MaterialIcons name="email" size={21} color="#147BA5" />
+              <View className="mr-3 flex-1">
+                <Text className="text-right text-[12px] font-bold text-[#145F7D]">البريد الإلكتروني</Text>
+                <Text className="mt-1 text-right text-[10px] text-[#397C97]">aimenalwwaby@gmail.com</Text>
+              </View>
+              <MaterialIcons name="open-in-new" size={17} color="#397C97" />
+            </Pressable>
           </View>
         </View>
 

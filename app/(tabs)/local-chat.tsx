@@ -6,6 +6,7 @@ import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform, Pre
 import { ScreenContainer } from "@/components/screen-container";
 import { BrandHeader, StatusBadge } from "@/components/chatbro-ui";
 import { useColors } from "@/hooks/use-colors";
+import { recordModelUse } from "@/lib/model-preferences";
 import { completeLocal, getDeviceProfile, listInstalledLocalModels, type InstalledLocalModel } from "@/lib/local-runtime";
 
 type Message = { id: string; role: "user" | "assistant"; text: string };
@@ -36,6 +37,7 @@ export default function LocalChatScreen() {
   const send = async () => {
     const text = input.trim();
     if (!text || !selected || busy) return;
+    void recordModelUse({ id: `local:${selected.id}`, name: selected.name, provider: "محلي على الجهاز", route: "local" }).catch(() => undefined);
     setInput("");
     const next = [...messages, { id: `${Date.now()}`, role: "user" as const, text }];
     setMessages(next);
