@@ -25,6 +25,40 @@ export type GenerateImageResponse = {
 };
 
 export async function generateImage(options: GenerateImageOptions): Promise<GenerateImageResponse> {
+  const replicateModel = options.model?.startsWith("replicate:") ? options.model.slice("replicate:".length) : undefined;
+  if (replicateModel) {
+    const token = process.env.REPLICATE_API_TOKEN;
+    if (!token) throw new Error("REPLICATE_API_TOKEN غير مهيأ على الخادم.");
+    const response = await fetch(`https://api.replicate.com/v1/models/${replicateModel}/predictions`, {
+      method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ input: { prompt: options.prompt } }), signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) throw new Error(`Replicate image request failed: ${response.status}`);
+    let job = await response.json() as { status?: string; urls?: { get?: string }; output?: string | string[] };
+    for (let i = 0; i < 60 && !job.output && job.status !== "failed" && job.status !== "canceled"; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+      if (!job.urls?.get) break;
+      const status = await fetch(job.urls.get, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) });
+      if (status.ok) job = await status.json() as typeof job;
+    }
+    const output = Array.isArray(job.output) ? job.output[0] : job.output;
+    if (!output) throw new Error("Replicate لم يُرجع صورة.");
+    return { url: output };
+  }
+  const falModel = options.model?.startsWith("fal:") ? options.model.slice("fal:".length) : undefined;
+  if (falModel) {
+    const token = process.env.FAL_KEY;
+    if (!token) throw new Error("FAL_KEY غير مهيأ على الخادم.");
+    const response = await fetch(`https://queue.fal.run/${falModel}`, {
+      method: "POST", headers: { "content-type": "application/json", authorization: `Key ${token}` },
+      body: JSON.stringify({ prompt: options.prompt }), signal: AbortSignal.timeout(120_000),
+    });
+    if (!response.ok) throw new Error(`fal.ai image request failed: ${response.status}`);
+    const payload = await response.json() as { images?: Array<{ url?: string }> };
+    const url = payload.images?.[0]?.url;
+    if (!url) throw new Error("fal.ai لم يُرجع صورة.");
+    return { url };
+  }
   const pollinationsKey = process.env.POLLINATIONS_API_KEY;
   const selectedPollinationsModel = options.model?.startsWith("pollinations:") ? options.model.slice("pollinations:".length) : undefined;
   if (selectedPollinationsModel || (!process.env.OPENROUTER_API_KEY && pollinationsKey && !process.env.BUILT_IN_FORGE_API_KEY)) {
@@ -154,7 +188,10 @@ export async function listImageModels(): Promise<ListImageModelsResponse> {
     } catch {}
   }
   const apiKey = process.env.OPENROUTER_API_KEY;
-  const staticModels = plannedImageProviders.map((model) => ({ ...model }));
+  const staticModels = plannedImageProviders.map((model) => {
+    const ready = model.provider === "Replicate" ? Boolean(process.env.REPLICATE_API_TOKEN) : model.provider === "fal.ai" ? Boolean(process.env.FAL_KEY) : model.ready;
+    return { ...model, ready, status: ready ? "جاهز" as const : model.status };
+  });
   if (apiKey) {
     try {
       const response = await fetch("https://openrouter.ai/api/v1/images/models", {
