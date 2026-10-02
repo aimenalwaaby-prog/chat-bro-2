@@ -188,7 +188,11 @@ export async function listImageModels(): Promise<ListImageModelsResponse> {
     } catch {}
   }
   const apiKey = process.env.OPENROUTER_API_KEY;
-  const staticModels = plannedImageProviders.map((model) => {
+  const staticModels = plannedImageProviders.filter((model) => {
+    if (model.provider === "Replicate") return Boolean(process.env.REPLICATE_API_TOKEN);
+    if (model.provider === "fal.ai") return Boolean(process.env.FAL_KEY);
+    return false;
+  }).map((model) => {
     const ready = model.provider === "Replicate" ? Boolean(process.env.REPLICATE_API_TOKEN) : model.provider === "fal.ai" ? Boolean(process.env.FAL_KEY) : model.ready;
     return { ...model, ready, status: ready ? "جاهز" as const : model.status };
   });
