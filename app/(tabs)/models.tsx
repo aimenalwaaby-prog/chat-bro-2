@@ -101,8 +101,8 @@ export default function ModelsScreen() {
       provider: "Anthropic · مباشر",
       providerKey: "anthropic",
       icon: "auto-awesome",
-      tone: "limited",
-      status: "متاح من Anthropic",
+      tone: "paid",
+      status: "مدفوع",
       limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Anthropic",
       category: "محادثة",
       requiresKey: true,
@@ -116,18 +116,18 @@ export default function ModelsScreen() {
     }));
     const gemini = (geminiModels.data?.models ?? []).map((model): ChatBroModel => ({
       name: `${model.name} · Gemini`, modelId: `gemini:${model.id}`, provider: "Google Gemini · مباشر", providerKey: "gemini", icon: "auto-awesome",
-      tone: "limited", status: "متاح من Gemini", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Google", category: "محادثة",
+      tone: "paid", status: "مدفوع", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Google", category: "محادثة",
       requiresKey: true, localOnly: false, runtime: "cloud", inputModalities: model.supportsVision ? ["text", "image"] : ["text"], outputModalities: ["text"], supportsVision: model.supportsVision, verified: true,
       types: ["محادثة", ...(model.supportsVision ? ["فهم الصور"] : []), ...searchTag],
     }));
     const groq = (groqModels.data?.models ?? []).map((model): ChatBroModel => ({
       name: `${model.name} · Groq`, modelId: `groq:${model.id}`, provider: "Groq · مباشر", providerKey: "groq", icon: "speed",
-      tone: "limited", status: "متاح من Groq", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Groq", category: "محادثة",
+      tone: "paid", status: "مدفوع", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Groq", category: "محادثة",
       requiresKey: true, localOnly: false, runtime: "cloud", inputModalities: ["text"], outputModalities: ["text"], verified: true, types: ["محادثة", "برمجة", ...searchTag],
     }));
     const cloudflare = (cloudflareModels.data?.models ?? []).map((model): ChatBroModel => ({
       name: `${model.name} · Cloudflare`, modelId: `cloudflare:${model.id}`, provider: "Cloudflare Workers AI", providerKey: "cloudflare", icon: "cloud",
-      tone: "limited", status: "متاح من Cloudflare", limit: "حسب حساب Cloudflare", category: "محادثة", requiresKey: true, localOnly: false, runtime: "cloud",
+      tone: "paid", status: "مدفوع", limit: "حسب حساب Cloudflare", category: "محادثة", requiresKey: true, localOnly: false, runtime: "cloud",
       inputModalities: ["text"], outputModalities: ["text"], verified: true, types: ["محادثة", "برمجة", ...searchTag],
     }));
     const gatewayProviderKey = (provider: string): NonNullable<ChatBroModel["providerKey"]> => {
@@ -147,9 +147,9 @@ export default function ModelsScreen() {
         provider: `بوابة · ${model.provider}`,
         providerKey: gatewayProviderKey(model.provider),
         icon: "hub",
-        tone: "limited",
-        status: "متاح من البوابة",
-        limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب البوابة",
+        tone: "paid",
+        status: "مدفوع",
+        limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز · يتطلب رصيدًا` : "يتطلب رصيدًا أو اشتراكًا",
         category: "محادثة",
         requiresKey: true,
         localOnly: false,
