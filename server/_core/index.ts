@@ -90,6 +90,8 @@ async function startServer() {
         anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
         gateway: Boolean(process.env.MODEL_GATEWAY_BASE_URL || process.env.MODEL_GATEWAYS_JSON),
         pollinations: Boolean(process.env.POLLINATIONS_API_KEY),
+        replicate: Boolean(process.env.REPLICATE_API_TOKEN),
+        fal: Boolean(process.env.FAL_KEY),
         comfyui: Boolean(process.env.COMFYUI_BASE_URL),
         imageService: Boolean(process.env.IMAGE_SERVICE_URL),
       },
