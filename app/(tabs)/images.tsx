@@ -45,19 +45,23 @@ export default function ImagesScreen() {
     const forge: GeneratorChoice[] = serverCapabilities?.forgeImages
       ? [{ id: "MODEL_GPT_IMAGE_2", name: "GPT Image 2", provider: "Forge · الخادم", detail: "إنشاء صور · جودة متوسطة", ready: true }]
       : [];
-    const openRouter = (imageCatalog.data?.models ?? [])
+    const configuredModels = (imageCatalog.data?.models ?? [])
       .filter((model) => Boolean(model.id ?? model.model))
-      .map((model): GeneratorChoice => ({
-        id: `openrouter:${model.id ?? model.model}`,
+      .map((model): GeneratorChoice => {
+        const rawId = model.id ?? model.model ?? "";
+        const id = /^(openrouter|replicate|fal|pollinations):/.test(rawId) ? rawId : `openrouter:${rawId}`;
+        return {
+        id,
         name: model.id ?? model.model ?? "نموذج صور",
-        provider: "OpenRouter",
+        provider: model.provider ?? "OpenRouter",
         detail: `${model.status ?? "غير محدد"} · ${model.access ?? "غير محدد"} · ${model.dailyLimit ?? "الحد حسب المزود"}`,
         ready: model.ready !== false,
-      }));
-    return [...forge, ...openRouter];
+      };
+      });
+    return [...forge, ...configuredModels];
   }, [imageCatalog.data, serverCapabilities]);
 
-  const canGenerate = Boolean(serverCapabilities?.openrouter || serverCapabilities?.forgeImages);
+  const canGenerate = Boolean(serverCapabilities?.openrouter || serverCapabilities?.forgeImages || serverCapabilities?.imageService || serverCapabilities?.pollinations || serverCapabilities?.replicate || serverCapabilities?.fal);
   const selectedChoice = choices.find((item) => item.id === selectedModel);
   const create = async () => {
     const cleanPrompt = prompt.trim();
@@ -66,7 +70,7 @@ export default function ImagesScreen() {
       return;
     }
     if (!canGenerate) {
-      Alert.alert("مولّد الصور غير مهيأ", "يلزم إعداد OpenRouter أو Forge ImageService على الخادم أولًا.");
+      Alert.alert("مولّد الصور غير مهيأ", "يلزم إعداد مزود صور فعلي على الخادم أولًا.");
       return;
     }
     setError("");
@@ -116,7 +120,7 @@ export default function ImagesScreen() {
           {generateImage.isPending ? <ActivityIndicator color="#062034" /> : <MaterialIcons name="auto-awesome" size={20} color="#062034" />}
           <Text className="text-[12px] font-extrabold text-[#062034]">{generateImage.isPending ? "جارٍ إنشاء الصورة…" : "إنشاء الصورة"}</Text>
         </Pressable>
-        {!canGenerate ? <Text className="mt-3 text-center text-[10px] leading-5 text-muted">{serverCapabilities === null ? "الخادم لا يستجيب حاليًا؛ أعد المحاولة بعد تشغيل الخدمة." : "مولّد الصور غير مهيأ؛ يحتاج مفتاح OpenRouter أو إعداد Forge ImageService على الخادم."}</Text> : null}
+        {!canGenerate ? <Text className="mt-3 text-center text-[10px] leading-5 text-muted">{serverCapabilities === null ? "الخادم لا يستجيب حاليًا؛ أعد المحاولة بعد تشغيل الخدمة." : "مولّد الصور غير مهيأ؛ يحتاج مزود صور مفعّلًا على الخادم."}</Text> : null}
         {serverCapabilities === null ? <Pressable onPress={() => void retryServer()} className="mt-2 rounded-xl border px-4 py-3" style={{ borderColor: colors.border }}><Text className="text-center text-[10px] font-bold text-primary">إعادة الاتصال بالخادم</Text></Pressable> : null}
         {error ? <Text className="mt-3 text-right text-[11px] leading-5 text-red-600">{error}</Text> : null}
         {imageUrl ? <View className="mt-6 overflow-hidden rounded-[24px] border bg-surface p-2" style={{ borderColor: colors.border }}><Image source={{ uri: imageUrl }} resizeMode="contain" className="h-[320px] w-full rounded-[18px]" /><Text className="mt-2 text-center text-[10px] font-semibold text-primary">تم إنشاء الصورة</Text></View> : null}

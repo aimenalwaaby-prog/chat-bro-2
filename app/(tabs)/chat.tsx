@@ -186,7 +186,7 @@ export default function ChatScreen() {
   );
   const localModelSelected = localModels.some((model) => model.name === selectedModel);
   const canUseWebSearch = Boolean(serverCapabilities?.openrouter) && !localModelSelected;
-  const canGenerateImage = Boolean(serverCapabilities?.openrouter || serverCapabilities?.forgeImages);
+  const canGenerateImage = Boolean(serverCapabilities?.openrouter || serverCapabilities?.forgeImages || serverCapabilities?.imageService || serverCapabilities?.pollinations || serverCapabilities?.replicate || serverCapabilities?.fal);
   const canAttachImage = !localModelSelected && (!selectedModel || Boolean(selectedCatalogModel?.supportsVision || selectedCatalogModel?.inputModalities?.includes("image")));
   useEffect(() => { if (localModelSelected) setWebSearchEnabled(false); else if (serverCapabilities?.openrouter) setWebSearchEnabled(true); }, [localModelSelected, serverCapabilities?.openrouter]);
 
