@@ -105,11 +105,12 @@ async function startServer() {
     }
     try {
       const input = req.body as { prompt?: string; model?: string; quality?: string; originalImages?: Array<{ url?: string; b64Json?: string; mimeType?: string }> };
-      if (!input.prompt || input.prompt.length < 3 || input.prompt.length > 4000) {
+      const prompt = input.prompt;
+      if (!prompt || prompt.length < 3 || prompt.length > 4000) {
         res.status(400).json({ ok: false, error: "النص غير صالح" });
         return;
       }
-      res.json(await generateImage(input));
+      res.json(await generateImage({ ...input, prompt }));
     } catch (error) {
       res.status(502).json({ ok: false, error: error instanceof Error ? error.message : "تعذر إنشاء الصورة" });
     }
