@@ -104,7 +104,7 @@ export function isModelAvailableToSelect(
   model: ChatBroModel,
   capabilities?: Record<string, boolean> | null,
 ) {
-  if (isPlannedModel(model.modelId)) return true;
+  if (isPlannedModel(model.modelId)) return false;
   if (model.localOnly || isLocalModelId(model.modelId) || !capabilities) return false;
   if (model.modelId.startsWith("openrouter:")) return Boolean(capabilities.openrouter);
   if (model.modelId.startsWith("anthropic:")) return Boolean(capabilities.anthropic);

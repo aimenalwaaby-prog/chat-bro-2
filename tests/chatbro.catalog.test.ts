@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { chatBroModels, filterModels, getModelTypeTags, isModelAvailableToSelect } from "../shared/chatbro-catalog";
 
 describe("Chat Bro model catalog", () => {
-  it("keeps the default route and planned provider/image entries in the static catalog", () => {
-    expect(chatBroModels.length).toBeGreaterThan(1);
+  it("keeps only the verified default route in the static catalog", () => {
+    expect(chatBroModels.length).toBe(1);
     expect(chatBroModels.some((model) => model.tone === "full")).toBe(true);
     expect(chatBroModels.every((model) => model.status.length > 0 && model.limit.length > 0 && model.modelId !== undefined)).toBe(true);
-    expect(chatBroModels.some((model) => model.modelId.startsWith("planned:") && model.status === "قريبًا")).toBe(true);
+    expect(chatBroModels.some((model) => model.modelId.startsWith("planned:"))).toBe(false);
     expect(chatBroModels.find((model) => !model.modelId)?.modelId).toBe("");
   });
 
@@ -42,6 +42,6 @@ describe("Chat Bro model catalog", () => {
     expect(isModelAvailableToSelect(gatewayModel, { ...onlyOpenRouter, gateway: true })).toBe(true);
     expect(isModelAvailableToSelect(anthropicModel, { ...onlyOpenRouter, anthropic: true })).toBe(true);
     expect(isModelAvailableToSelect(localModel, { ...onlyOpenRouter, builtInLLM: true, gateway: true })).toBe(false);
-    expect(isModelAvailableToSelect(plannedModel, null)).toBe(true);
+    expect(isModelAvailableToSelect(plannedModel, null)).toBe(false);
   });
 });
