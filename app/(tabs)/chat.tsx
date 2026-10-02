@@ -124,10 +124,13 @@ export default function ChatScreen() {
     name: `${model.name} · Anthropic`, modelId: `anthropic:${model.id}`, provider: "Anthropic · مباشر", providerKey: "anthropic", icon: "auto-awesome", tone: "limited",
     status: "متاح من Anthropic", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Anthropic", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway", inputModalities: model.supportsVision ? ["text", "image"] : ["text"], outputModalities: ["text"], types: ["محادثة", ...(model.supportsVision ? ["فهم الصور"] : [])], supportsVision: model.supportsVision, verified: true,
   })), [anthropicModels.data]);
-  const dynamicGatewayModels = useMemo<ChatBroModel[]>(() => (gatewayModels.data?.models ?? []).filter((model) => !model.outputModalities?.length || model.outputModalities.includes("text")).map((model) => ({
-    name: `${model.name} · ${model.provider}`, modelId: model.id, provider: `بوابة · ${model.provider}`, providerKey: "gateway", icon: "hub", tone: "limited",
+  const dynamicGatewayModels = useMemo<ChatBroModel[]>(() => (gatewayModels.data?.models ?? []).filter((model) => !model.outputModalities?.length || model.outputModalities.includes("text")).map((model) => {
+    const providerName = model.provider.toLowerCase();
+    const providerKey: ChatBroModel["providerKey"] = providerName.includes("mistral") ? "mistral" : providerName.includes("hugging") ? "huggingface" : providerName.includes("deepinfra") ? "deepinfra" : providerName.includes("nvidia") ? "nvidia" : providerName.includes("replicate") ? "replicate" : providerName.includes("fal") ? "fal" : "gateway";
+    return {
+    name: `${model.name} · ${model.provider}`, modelId: model.id, provider: model.provider, providerKey, icon: "hub", tone: "limited",
     status: "متاح من البوابة", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب البوابة", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway", inputModalities: model.inputModalities ?? [], outputModalities: model.outputModalities ?? ["text"], supportsVision: model.inputModalities?.includes("image"), verified: true,
-  })), [gatewayModels.data]);
+  }; }), [gatewayModels.data]);
   const cloudChatModels = useMemo(() => {
     const liveModels = [...dynamicBuiltInModels, ...dynamicGeminiModels, ...dynamicGroqModels, ...dynamicCloudflareModels, ...dynamicAnthropicModels, ...dynamicGatewayModels, ...dynamicOpenRouterModels];
     const staticModels = chatBroModels.filter((model) => isModelAvailableToSelect(model, serverCapabilities));

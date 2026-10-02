@@ -20,6 +20,12 @@ const providers: { key: NonNullable<ChatBroModel["providerKey"]>; label: string 
   { key: "gemini", label: "Google Gemini" },
   { key: "groq", label: "Groq" },
   { key: "cloudflare", label: "Cloudflare AI" },
+  { key: "mistral", label: "Mistral" },
+  { key: "huggingface", label: "Hugging Face" },
+  { key: "deepinfra", label: "DeepInfra" },
+  { key: "nvidia", label: "NVIDIA NIM" },
+  { key: "replicate", label: "Replicate" },
+  { key: "fal", label: "fal.ai" },
   { key: "gateway", label: "البوابات" },
   { key: "local", label: "محلي" },
 ];
@@ -124,12 +130,22 @@ export default function ModelsScreen() {
       tone: "limited", status: "متاح من Cloudflare", limit: "حسب حساب Cloudflare", category: "محادثة", requiresKey: true, localOnly: false, runtime: "cloud",
       inputModalities: ["text"], outputModalities: ["text"], verified: true, types: ["محادثة", "برمجة", ...searchTag],
     }));
+    const gatewayProviderKey = (provider: string): NonNullable<ChatBroModel["providerKey"]> => {
+      const normalized = provider.toLowerCase();
+      if (normalized.includes("mistral")) return "mistral";
+      if (normalized.includes("hugging")) return "huggingface";
+      if (normalized.includes("deepinfra")) return "deepinfra";
+      if (normalized.includes("nvidia")) return "nvidia";
+      if (normalized.includes("replicate")) return "replicate";
+      if (normalized.includes("fal")) return "fal";
+      return "gateway";
+    };
     const gateways = (gatewayModels.data?.models ?? []).map((model): ChatBroModel => {
       const candidate: ChatBroModel = {
         name: `${model.name} · ${model.provider}`,
         modelId: model.id,
         provider: `بوابة · ${model.provider}`,
-        providerKey: "gateway",
+        providerKey: gatewayProviderKey(model.provider),
         icon: "hub",
         tone: "limited",
         status: "متاح من البوابة",
