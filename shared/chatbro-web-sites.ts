@@ -17,6 +17,7 @@ const s = (
 ): AiWebSite => ({ name, url, category, strength, access, description });
 
 export const aiWebSites: AiWebSite[] = [
+  s("Manus", "https://manus.im", "برمجة وتطبيقات", 5, "مجاني جزئي", "منصة وكلاء ذكاء اصطناعي لإنجاز المهام وبناء المشاريع."),
   s("ChatGPT", "https://chatgpt.com", "محادثة", 5, "مجاني جزئي", "محادثة وكتابة وتحليل."),
   s("Claude", "https://claude.ai", "محادثة", 5, "مجاني جزئي", "تحليل وكتابة وبرمجة."),
   s("Gemini", "https://gemini.google.com", "محادثة", 5, "مجاني جزئي", "مساعد Google للبحث والملفات."),

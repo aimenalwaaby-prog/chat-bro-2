@@ -72,9 +72,32 @@ services:
       - key: SERVICE_ROLE
         value: api
       - key: IMAGE_SERVICE_URL
-        value: https://chat-bro-2.onrender.com
+        value: https://chatbro-media-3.onrender.com
       - key: IMAGE_SERVICE_TOKEN
         sync: false
+  - type: web
+    name: chatbro-media-3
+    runtime: docker
+    healthCheckPath: /api/health
+    plan: free
+    region: frankfurt
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: SERVICE_ROLE
+        value: media
+      - key: IMAGE_SERVICE_TOKEN
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: REPLICATE_API_TOKEN
+        sync: false
+      - key: FAL_KEY
+        sync: false
+      - key: PUBLIC_API_BASE_URL
+        value: https://chatbro-media-3.onrender.com
   - type: static_site
     name: chatbro-web
     branch: main

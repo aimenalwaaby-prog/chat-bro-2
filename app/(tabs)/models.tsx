@@ -62,9 +62,9 @@ export default function ModelsScreen() {
         provider: "OpenRouter · خارجي",
         providerKey: "openrouter",
         icon: "hub",
-        tone: model.prompt === "0" && model.completion === "0" ? "full" : "limited",
-        status: model.prompt === "0" && model.completion === "0" ? "مجاني" : "متاح من OpenRouter",
-        limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب المزود",
+        tone: model.prompt === "0" && model.completion === "0" ? "full" : "paid",
+        status: model.prompt === "0" && model.completion === "0" ? "مجاني" : "مدفوع",
+        limit: model.prompt === "0" && model.completion === "0" ? (model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب الحصة المجانية") : "يتطلب رصيدًا أو اشتراكًا",
         category: "محادثة",
         requiresKey: true,
         localOnly: false,
@@ -181,7 +181,7 @@ export default function ModelsScreen() {
   };
 
   const openModel = (model: ChatBroModel) => {
-    if (model.modelId.startsWith("planned:")) return;
+    if (model.modelId.startsWith("planned:") || model.tone === "paid") return;
     const imageOnly = activeType === "إنشاء الصور" && model.outputModalities?.includes("image");
     const noTextOutput = Boolean(model.outputModalities?.length && !model.outputModalities.includes("text"));
     if (imageOnly || noTextOutput) {
@@ -230,7 +230,7 @@ export default function ModelsScreen() {
           const favorite = favoriteIds.has(item.modelId);
           return (
             <View className="flex-row-reverse items-center rounded-[20px] border p-3" style={{ backgroundColor: colors.surface, borderColor: colors.border }}>
-              <Pressable disabled={item.modelId.startsWith("planned:")} onPress={() => openModel(item)} className="min-h-[78px] flex-1 flex-row-reverse items-center" style={{ opacity: item.modelId.startsWith("planned:") ? 0.68 : 1 }}>
+              <Pressable disabled={item.modelId.startsWith("planned:") || item.tone === "paid"} onPress={() => openModel(item)} className="min-h-[78px] flex-1 flex-row-reverse items-center" style={{ opacity: item.tone === "paid" ? 0.58 : 1 }}>
                 <View className="h-11 w-11 items-center justify-center rounded-[15px] bg-[#E6F8FD]"><MaterialIcons name={item.icon as never} size={21} color="#0787B4" /></View>
                 <View className="mr-3 flex-1">
                   <View className="flex-row-reverse items-center justify-between gap-2"><Text numberOfLines={1} className="flex-1 text-right text-[12px] font-bold text-foreground">{item.name}</Text><StatusBadge label={item.status} tone={item.tone} /></View>
@@ -241,7 +241,7 @@ export default function ModelsScreen() {
                     {item.outputModalities?.includes("image") ? <Text className="self-center text-[9px] text-muted">إخراج صور</Text> : null}
                   </View>
                 </View>
-                <MaterialIcons name={activeType === "إنشاء الصور" || (item.outputModalities?.length && !item.outputModalities.includes("text")) ? "image" : "chevron-left"} size={19} color={colors.muted} />
+                <MaterialIcons name={item.tone === "paid" ? "lock" : activeType === "إنشاء الصور" || (item.outputModalities?.length && !item.outputModalities.includes("text")) ? "image" : "chevron-left"} size={19} color={colors.muted} />
               </Pressable>
               <Pressable accessibilityRole="button" accessibilityLabel={favorite ? "إزالة من المفضلة" : "إضافة إلى المفضلة"} onPress={() => void toggleFavorite(item)} className="ml-1 h-10 w-10 items-center justify-center rounded-xl">
                 <MaterialIcons name={favorite ? "star" : "star-outline"} size={21} color={favorite ? "#E1A526" : colors.muted} />

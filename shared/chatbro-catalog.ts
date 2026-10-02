@@ -59,18 +59,6 @@ export const chatBroModels: ChatBroModel[] = [
     "auto-awesome",
     "full",
   ),
-  ...[
-    ["Gemini 2.5 Flash · قريبًا", "planned:gemini-2.5-flash", "Google Gemini", "auto-awesome"],
-    ["Claude Sonnet · قريبًا", "planned:anthropic-claude-sonnet", "Anthropic", "auto-awesome"],
-    ["Llama 3.3 · قريبًا", "planned:groq-llama-3.3", "Groq", "speed"],
-    ["Llama 3.1 · قريبًا", "planned:cloudflare-llama-3.1", "Cloudflare Workers AI", "cloud"],
-    ["Qwen Coder · قريبًا", "planned:gateway-qwen-coder", "بوابة خارجية", "hub"],
-    ["GPT Image · قريبًا", "planned:image-gpt", "إنشاء الصور", "image"],
-    ["Flux · قريبًا", "planned:image-flux", "إنشاء الصور", "image"],
-    ["Stable Diffusion · قريبًا", "planned:image-stable-diffusion", "إنشاء الصور", "image"],
-  ].map(([name, modelId, provider, icon]) => ({
-    name, modelId, provider, icon, tone: "trial" as const, status: "قريبًا", limit: "يتطلب تفعيل مفتاح المزود", category: provider === "إنشاء الصور" ? "إنشاء الصور" : "محادثة", requiresKey: true, localOnly: false, runtime: "gateway" as const, providerKey: provider === "Google Gemini" ? "gemini" as const : provider === "Anthropic" ? "anthropic" as const : provider === "Groq" ? "groq" as const : provider === "Cloudflare Workers AI" ? "cloudflare" as const : "gateway" as const, inputModalities: ["text"], outputModalities: provider === "إنشاء الصور" ? ["image"] : ["text"], types: provider === "إنشاء الصور" ? ["إنشاء الصور"] : ["محادثة"], verified: false,
-  })),
 ];
 
 export function filterModels(
