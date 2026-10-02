@@ -9,7 +9,7 @@ import { useColors } from "@/hooks/use-colors";
 import { checkServerConnection } from "@/lib/_core/api";
 import { trpc } from "@/lib/trpc";
 
-type GeneratorChoice = { id: string; name: string; provider: string; detail: string };
+type GeneratorChoice = { id: string; name: string; provider: string; detail: string; ready: boolean };
 
 export default function ImagesScreen() {
   const colors = useColors();
@@ -43,7 +43,7 @@ export default function ImagesScreen() {
 
   const choices = useMemo<GeneratorChoice[]>(() => {
     const forge: GeneratorChoice[] = serverCapabilities?.forgeImages
-      ? [{ id: "MODEL_GPT_IMAGE_2", name: "GPT Image 2", provider: "Forge · الخادم", detail: "إنشاء صور · جودة متوسطة" }]
+      ? [{ id: "MODEL_GPT_IMAGE_2", name: "GPT Image 2", provider: "Forge · الخادم", detail: "إنشاء صور · جودة متوسطة", ready: true }]
       : [];
     const openRouter = (imageCatalog.data?.models ?? [])
       .filter((model) => Boolean(model.id ?? model.model))
@@ -51,7 +51,8 @@ export default function ImagesScreen() {
         id: `openrouter:${model.id ?? model.model}`,
         name: model.id ?? model.model ?? "نموذج صور",
         provider: "OpenRouter",
-        detail: `${model.access ?? "غير محدد"} · ${model.dailyLimit ?? "الحد حسب المزود"}`,
+        detail: `${model.status ?? "غير محدد"} · ${model.access ?? "غير محدد"} · ${model.dailyLimit ?? "الحد حسب المزود"}`,
+        ready: model.ready !== false,
       }));
     return [...forge, ...openRouter];
   }, [imageCatalog.data, serverCapabilities]);
@@ -102,7 +103,7 @@ export default function ImagesScreen() {
         {pickerOpen ? (
           <View className="mt-2 rounded-2xl border p-2" style={{ borderColor: colors.border, backgroundColor: colors.surface }}>
             <Pressable onPress={() => { setSelectedModel(""); setPickerOpen(false); }} className="rounded-xl px-3 py-3" style={{ backgroundColor: selectedModel ? colors.surface : "#E6F8FD" }}><Text className="text-right text-[11px] font-semibold text-foreground">اختيار تلقائي من الخادم</Text></Pressable>
-            {choices.map((choice) => <Pressable key={choice.id} onPress={() => { setSelectedModel(choice.id); setPickerOpen(false); }} className="mt-1 rounded-xl px-3 py-3" style={{ backgroundColor: choice.id === selectedModel ? "#E6F8FD" : colors.surface }}><Text className="text-right text-[11px] font-semibold text-foreground">{choice.name}</Text><Text className="mt-1 text-right text-[9px] text-muted">{choice.provider} · {choice.detail}</Text></Pressable>)}
+            {choices.map((choice) => <Pressable key={choice.id} disabled={!choice.ready} onPress={() => { setSelectedModel(choice.id); setPickerOpen(false); }} className="mt-1 rounded-xl px-3 py-3" style={{ backgroundColor: choice.id === selectedModel ? "#E6F8FD" : colors.surface, opacity: choice.ready ? 1 : 0.6 }}><Text className="text-right text-[11px] font-semibold text-foreground">{choice.name}</Text><Text className="mt-1 text-right text-[9px] text-muted">{choice.provider} · {choice.detail}</Text></Pressable>)}
             {imageCatalog.isFetching || imageModels.isFetching ? <ActivityIndicator className="py-2" /> : null}
             {!choices.length && !imageModels.isFetching ? <Text className="px-3 py-2 text-right text-[10px] leading-4 text-muted">لا توجد نماذج صور ظاهرة في الكتالوج بعد. يمكن استخدام الاختيار التلقائي إذا كان الخادم مهيأ.</Text> : null}
           </View>

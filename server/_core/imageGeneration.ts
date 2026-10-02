@@ -124,14 +124,29 @@ export type ImageModelInfo = {
   pricing?: { prompt?: string; completion?: string; image?: string };
   access?: "مجاني" | "مدفوع" | "غير محدد" | "حسب الخادم";
   dailyLimit?: string;
+  status?: "جاهز" | "قريبًا" | "داخل التطبيق فقط";
+  ready?: boolean;
+  runtime?: "server" | "in-app";
 };
 
 export type ListImageModelsResponse = {
   models: ImageModelInfo[];
 };
 
+const plannedImageProviders: ImageModelInfo[] = [
+  { id: "local-image:stable-diffusion-xl", model: "local-image:stable-diffusion-xl", provider: "Stable Diffusion · داخل التطبيق", access: "غير محدد", dailyLimit: "حسب جهاز المستخدم", status: "داخل التطبيق فقط", ready: false, runtime: "in-app" },
+  { id: "local-image:flux-schnell", model: "local-image:flux-schnell", provider: "FLUX · داخل التطبيق", access: "غير محدد", dailyLimit: "حسب جهاز المستخدم", status: "داخل التطبيق فقط", ready: false, runtime: "in-app" },
+  { id: "replicate:sdxl", model: "replicate:sdxl", provider: "Replicate", access: "مدفوع", dailyLimit: "حسب رصيد المزود", status: "قريبًا", ready: false, runtime: "server" },
+  { id: "fal:flux", model: "fal:flux", provider: "fal.ai", access: "مدفوع", dailyLimit: "حسب رصيد المزود", status: "قريبًا", ready: false, runtime: "server" },
+  { id: "huggingface:sdxl", model: "huggingface:sdxl", provider: "Hugging Face", access: "غير محدد", dailyLimit: "حسب حصة المزود", status: "قريبًا", ready: false, runtime: "server" },
+  { id: "stability:stable-image", model: "stability:stable-image", provider: "Stability AI", access: "مدفوع", dailyLimit: "حسب رصيد المزود", status: "قريبًا", ready: false, runtime: "server" },
+  { id: "together:images", model: "together:images", provider: "Together AI", access: "مدفوع", dailyLimit: "حسب رصيد المزود", status: "قريبًا", ready: false, runtime: "server" },
+  { id: "fireworks:images", model: "fireworks:images", provider: "Fireworks AI", access: "مدفوع", dailyLimit: "حسب رصيد المزود", status: "قريبًا", ready: false, runtime: "server" },
+];
+
 export async function listImageModels(): Promise<ListImageModelsResponse> {
   const apiKey = process.env.OPENROUTER_API_KEY;
+  const staticModels = plannedImageProviders.map((model) => ({ ...model }));
   if (apiKey) {
     try {
       const response = await fetch("https://openrouter.ai/api/v1/images/models", {
@@ -140,11 +155,11 @@ export async function listImageModels(): Promise<ListImageModelsResponse> {
       });
       if (response.ok) {
         const payload = (await response.json()) as { data?: Array<{ id?: string; name?: string; pricing?: { prompt?: string; completion?: string; image?: string } }> };
-        return { models: (payload.data ?? []).filter((m) => m.id).map((m) => {
+        return { models: [...(payload.data ?? []).filter((m) => m.id).map((m) => {
           const pricing = m.pricing;
           const free = pricing && [pricing.prompt, pricing.completion, pricing.image].some((value) => value === "0");
-          return { id: m.id, model: m.id, provider: "OpenRouter", pricing, access: free ? "مجاني" as const : pricing ? "مدفوع" as const : "غير محدد" as const, dailyLimit: free ? "حسب الحصة المجانية للمزود" : "حسب رصيد ومعدل المزود" };
-        }) };
+          return { id: m.id, model: m.id, provider: "OpenRouter", pricing, access: free ? "مجاني" as const : pricing ? "مدفوع" as const : "غير محدد" as const, dailyLimit: free ? "حسب الحصة المجانية للمزود" : "حسب رصيد ومعدل المزود", status: "جاهز" as const, ready: true, runtime: "server" as const };
+        }), ...staticModels] };
       }
       const catalogResponse = await fetch("https://openrouter.ai/api/v1/models", {
         headers: { authorization: `Bearer ${apiKey}` },
@@ -152,17 +167,17 @@ export async function listImageModels(): Promise<ListImageModelsResponse> {
       });
       if (catalogResponse.ok) {
         const payload = (await catalogResponse.json()) as { data?: Array<{ id?: string; name?: string; architecture?: { output_modalities?: string[] }; pricing?: { prompt?: string; completion?: string; image?: string } }> };
-        return { models: (payload.data ?? []).filter((m) => m.id && m.architecture?.output_modalities?.includes("image")).map((m) => {
+        return { models: [...(payload.data ?? []).filter((m) => m.id && m.architecture?.output_modalities?.includes("image")).map((m) => {
           const pricing = m.pricing;
           const free = pricing && [pricing.prompt, pricing.completion, pricing.image].some((value) => value === "0");
-          return { id: m.id, model: m.id, provider: "OpenRouter", pricing, access: free ? "مجاني" as const : pricing ? "مدفوع" as const : "غير محدد" as const, dailyLimit: free ? "حسب الحصة المجانية للمزود" : "حسب رصيد ومعدل المزود" };
-        }) };
+          return { id: m.id, model: m.id, provider: "OpenRouter", pricing, access: free ? "مجاني" as const : pricing ? "مدفوع" as const : "غير محدد" as const, dailyLimit: free ? "حسب الحصة المجانية للمزود" : "حسب رصيد ومعدل المزود", status: "جاهز" as const, ready: true, runtime: "server" as const };
+        }), ...staticModels] };
       }
     } catch {}
   }
   const forgeApiKey = process.env.BUILT_IN_FORGE_API_KEY;
   const forgeApiUrl = process.env.BUILT_IN_FORGE_API_URL;
-  if (!apiKey && (!forgeApiUrl || !forgeApiKey)) throw new Error("No image provider is configured.");
+  if (!apiKey && (!forgeApiUrl || !forgeApiKey) && !process.env.POLLINATIONS_API_KEY) return { models: staticModels };
   if (forgeApiUrl && forgeApiKey) {
     const baseUrl = forgeApiUrl.endsWith("/") ? forgeApiUrl : `${forgeApiUrl}/`;
     const fullUrl = new URL("images.v1.ImageService/ListModels", baseUrl).toString();
@@ -174,7 +189,7 @@ export async function listImageModels(): Promise<ListImageModelsResponse> {
     });
     if (!response.ok) throw new Error(`Forge image model listing failed: ${response.status}`);
     const payload = (await response.json()) as { models?: ImageModelInfo[] };
-    return { models: (payload.models ?? []).map((model) => ({ ...model, provider: model.provider ?? "Forge", access: model.access ?? "حسب الخادم", dailyLimit: model.dailyLimit ?? "حسب إعداد الخادم" })) };
+    return { models: [...(payload.models ?? []).map((model) => ({ ...model, provider: model.provider ?? "Forge", access: model.access ?? "حسب الخادم", dailyLimit: model.dailyLimit ?? "حسب إعداد الخادم", status: "جاهز" as const, ready: true, runtime: "server" as const })), ...staticModels] };
   }
-  return { models: [] };
+  return { models: staticModels };
 }
