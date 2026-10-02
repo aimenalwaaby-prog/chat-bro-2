@@ -8,6 +8,7 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { ENV } from "./env";
+import { generateImage, listImageModels } from "./imageGeneration";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -78,6 +79,7 @@ async function startServer() {
       ok: true,
       timestamp: Date.now(),
       service: "chatbro-api",
+      role: process.env.SERVICE_ROLE ?? "api",
       capabilities: {
         builtInLLM: Boolean(ENV.forgeApiKey),
         openrouter: Boolean(process.env.OPENROUTER_API_KEY),
@@ -89,11 +91,36 @@ async function startServer() {
         gateway: Boolean(process.env.MODEL_GATEWAY_BASE_URL || process.env.MODEL_GATEWAYS_JSON),
         pollinations: Boolean(process.env.POLLINATIONS_API_KEY),
         comfyui: Boolean(process.env.COMFYUI_BASE_URL),
+        imageService: Boolean(process.env.IMAGE_SERVICE_URL),
       },
     });
   };
   app.get("/health", health);
   app.get("/api/health", health);
+
+  app.post("/internal/images/generate", async (req, res) => {
+    if (process.env.SERVICE_ROLE !== "media" || !process.env.IMAGE_SERVICE_TOKEN || req.headers.authorization !== `Bearer ${process.env.IMAGE_SERVICE_TOKEN}`) {
+      res.status(404).json({ ok: false, error: "المسار غير موجود" });
+      return;
+    }
+    try {
+      const input = req.body as { prompt?: string; model?: string; quality?: string; originalImages?: Array<{ url?: string; b64Json?: string; mimeType?: string }> };
+      if (!input.prompt || input.prompt.length < 3 || input.prompt.length > 4000) {
+        res.status(400).json({ ok: false, error: "النص غير صالح" });
+        return;
+      }
+      res.json(await generateImage(input));
+    } catch (error) {
+      res.status(502).json({ ok: false, error: error instanceof Error ? error.message : "تعذر إنشاء الصورة" });
+    }
+  });
+  app.get("/internal/images/models", async (req, res) => {
+    if (process.env.SERVICE_ROLE !== "media" || !process.env.IMAGE_SERVICE_TOKEN || req.headers.authorization !== `Bearer ${process.env.IMAGE_SERVICE_TOKEN}`) {
+      res.status(404).json({ ok: false, error: "المسار غير موجود" });
+      return;
+    }
+    res.json(await listImageModels());
+  });
 
   app.use(
     "/api/trpc",

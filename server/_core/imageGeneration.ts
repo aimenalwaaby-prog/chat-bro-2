@@ -145,6 +145,14 @@ const plannedImageProviders: ImageModelInfo[] = [
 ];
 
 export async function listImageModels(): Promise<ListImageModelsResponse> {
+  const mediaServiceUrl = process.env.IMAGE_SERVICE_URL?.replace(/\/$/, "");
+  const mediaToken = process.env.IMAGE_SERVICE_TOKEN;
+  if (mediaServiceUrl && mediaToken && process.env.SERVICE_ROLE !== "media") {
+    try {
+      const response = await fetch(`${mediaServiceUrl}/internal/images/models`, { headers: { authorization: `Bearer ${mediaToken}` }, signal: AbortSignal.timeout(20_000) });
+      if (response.ok) return (await response.json()) as ListImageModelsResponse;
+    } catch {}
+  }
   const apiKey = process.env.OPENROUTER_API_KEY;
   const staticModels = plannedImageProviders.map((model) => ({ ...model }));
   if (apiKey) {

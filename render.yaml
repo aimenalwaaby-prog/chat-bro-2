@@ -65,6 +65,12 @@ services:
         value: https://chatbro-api.onrender.com
       - key: MAX_UPLOAD_BYTES
         value: "16777216"
+      - key: SERVICE_ROLE
+        value: api
+      - key: IMAGE_SERVICE_URL
+        value: https://chat-bro-2.onrender.com
+      - key: IMAGE_SERVICE_TOKEN
+        sync: false
   - type: static_site
     name: chatbro-web
     branch: main

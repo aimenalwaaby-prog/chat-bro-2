@@ -13,6 +13,20 @@ import { z } from "zod";
 import { getProviderKey } from "./_core/provider-pool";
 import { enforceUsage, getSubscriptionConfig, getUsagePolicy } from "./_core/usage-policy";
 
+async function generateImageViaMediaService(input: Parameters<typeof generateImage>[0]) {
+  const baseUrl = process.env.IMAGE_SERVICE_URL?.replace(/\/$/, "");
+  const token = process.env.IMAGE_SERVICE_TOKEN;
+  if (!baseUrl || !token) return generateImage(input);
+  const response = await fetch(`${baseUrl}/internal/images/generate`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+    signal: AbortSignal.timeout(150_000),
+  });
+  if (!response.ok) throw new Error(`خدمة الصور الثانوية لم تستجب (${response.status}).`);
+  return (await response.json()) as Awaited<ReturnType<typeof generateImage>>;
+}
+
 type SimpleMessage = { role: string; content: unknown };
 const publicApiBase = () => (process.env.PUBLIC_API_BASE_URL ?? "https://chatbro-api.onrender.com").replace(/\/$/, "");
 const errorForClient = (error: unknown) => {
@@ -481,7 +495,7 @@ export const appRouter = router({
     generate: publicProcedure.input(z.object({ prompt: z.string().min(3).max(4000), model: z.string().max(120).optional(), quality: z.enum(["medium", "high"]).optional() })).mutation(async ({ input, ctx }) => {
       enforceUsage({ req: ctx.req, user: ctx.user, kind: "image", model: input.model });
       try {
-        const result = await generateImage(input);
+        const result = await (process.env.IMAGE_SERVICE_URL && process.env.SERVICE_ROLE !== "media" ? generateImageViaMediaService(input) : generateImage(input));
         if (ctx.user) await db.recordUsage({ userId: ctx.user.id, model: input.model, provider: input.model?.split(":")[0] ?? "image", requestKind: "image" });
         return result;
       } catch (error) { if (ctx.user) await db.recordUsage({ userId: ctx.user.id, model: input.model, provider: input.model?.split(":")[0] ?? "image", requestKind: "image", outcome: "error", errorCode: error instanceof Error ? error.name : "UNKNOWN" }).catch(() => undefined); throw new TRPCError({ code: "BAD_GATEWAY", message: errorForClient(error) }); }
