@@ -24,6 +24,7 @@ const providers: { key: NonNullable<ChatBroModel["providerKey"]>; label: string 
   { key: "huggingface", label: "Hugging Face" },
   { key: "deepinfra", label: "DeepInfra" },
   { key: "nvidia", label: "NVIDIA NIM" },
+  { key: "fireworks", label: "Fireworks AI" },
   { key: "replicate", label: "Replicate" },
   { key: "fal", label: "fal.ai" },
   { key: "gateway", label: "البوابات" },
@@ -38,13 +39,13 @@ export default function ModelsScreen() {
   const [query, setQuery] = useState("");
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [serverCapabilities, setServerCapabilities] = useState<Record<string, boolean> | null>(null);
-  const openRouterModels = trpc.models.openRouter.useQuery(undefined, { enabled: serverCapabilities?.openrouter === true, staleTime: 60_000, retry: 1 });
-  const builtInModels = trpc.models.builtIn.useQuery(undefined, { enabled: Boolean(serverCapabilities?.builtInLLM), staleTime: 60_000, retry: 1 });
-  const anthropicModels = trpc.models.anthropic.useQuery(undefined, { enabled: Boolean(serverCapabilities?.anthropic), staleTime: 60_000, retry: 1 });
-  const geminiModels = trpc.models.gemini.useQuery(undefined, { enabled: Boolean(serverCapabilities?.gemini), staleTime: 60_000, retry: 1 });
-  const groqModels = trpc.models.groq.useQuery(undefined, { enabled: Boolean(serverCapabilities?.groq), staleTime: 60_000, retry: 1 });
-  const cloudflareModels = trpc.models.cloudflare.useQuery(undefined, { enabled: Boolean(serverCapabilities?.cloudflare), staleTime: 60_000, retry: 1 });
-  const gatewayModels = trpc.models.gateways.useQuery(undefined, { enabled: Boolean(serverCapabilities?.gateway), staleTime: 60_000, retry: 1 });
+  const openRouterModels = trpc.models.openRouter.useQuery(undefined, { staleTime: 60_000, retry: 1 });
+  const builtInModels = trpc.models.builtIn.useQuery(undefined, { staleTime: 60_000, retry: 1 });
+  const anthropicModels = trpc.models.anthropic.useQuery(undefined, { staleTime: 60_000, retry: 1 });
+  const geminiModels = trpc.models.gemini.useQuery(undefined, { staleTime: 60_000, retry: 1 });
+  const groqModels = trpc.models.groq.useQuery(undefined, { staleTime: 60_000, retry: 1 });
+  const cloudflareModels = trpc.models.cloudflare.useQuery(undefined, { staleTime: 60_000, retry: 1 });
+  const gatewayModels = trpc.models.gateways.useQuery(undefined, { staleTime: 60_000, retry: 1 });
 
   useEffect(() => {
     let active = true;
@@ -136,6 +137,7 @@ export default function ModelsScreen() {
       if (normalized.includes("hugging")) return "huggingface";
       if (normalized.includes("deepinfra")) return "deepinfra";
       if (normalized.includes("nvidia")) return "nvidia";
+      if (normalized.includes("fireworks")) return "fireworks";
       if (normalized.includes("replicate")) return "replicate";
       if (normalized.includes("fal")) return "fal";
       return "gateway";
@@ -181,7 +183,6 @@ export default function ModelsScreen() {
   };
 
   const openModel = (model: ChatBroModel) => {
-    if (model.modelId.startsWith("planned:") || model.tone === "paid") return;
     const imageOnly = activeType === "إنشاء الصور" && model.outputModalities?.includes("image");
     const noTextOutput = Boolean(model.outputModalities?.length && !model.outputModalities.includes("text"));
     if (imageOnly || noTextOutput) {
@@ -230,7 +231,7 @@ export default function ModelsScreen() {
           const favorite = favoriteIds.has(item.modelId);
           return (
             <View className="flex-row-reverse items-center rounded-[20px] border p-3" style={{ backgroundColor: colors.surface, borderColor: colors.border }}>
-              <Pressable disabled={item.modelId.startsWith("planned:") || item.tone === "paid"} onPress={() => openModel(item)} className="min-h-[78px] flex-1 flex-row-reverse items-center" style={{ opacity: item.tone === "paid" ? 0.58 : 1 }}>
+              <Pressable onPress={() => openModel(item)} className="min-h-[78px] flex-1 flex-row-reverse items-center">
                 <View className="h-11 w-11 items-center justify-center rounded-[15px] bg-[#E6F8FD]"><MaterialIcons name={item.icon as never} size={21} color="#0787B4" /></View>
                 <View className="mr-3 flex-1">
                   <View className="flex-row-reverse items-center justify-between gap-2"><Text numberOfLines={1} className="flex-1 text-right text-[12px] font-bold text-foreground">{item.name}</Text><StatusBadge label={item.status} tone={item.tone} /></View>
@@ -241,7 +242,7 @@ export default function ModelsScreen() {
                     {item.outputModalities?.includes("image") ? <Text className="self-center text-[9px] text-muted">إخراج صور</Text> : null}
                   </View>
                 </View>
-                <MaterialIcons name={item.tone === "paid" ? "lock" : activeType === "إنشاء الصور" || (item.outputModalities?.length && !item.outputModalities.includes("text")) ? "image" : "chevron-left"} size={19} color={colors.muted} />
+                <MaterialIcons name={activeType === "إنشاء الصور" || (item.outputModalities?.length && !item.outputModalities.includes("text")) ? "image" : "chevron-left"} size={19} color={colors.muted} />
               </Pressable>
               <Pressable accessibilityRole="button" accessibilityLabel={favorite ? "إزالة من المفضلة" : "إضافة إلى المفضلة"} onPress={() => void toggleFavorite(item)} className="ml-1 h-10 w-10 items-center justify-center rounded-xl">
                 <MaterialIcons name={favorite ? "star" : "star-outline"} size={21} color={favorite ? "#E1A526" : colors.muted} />

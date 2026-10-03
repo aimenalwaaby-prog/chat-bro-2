@@ -1,7 +1,7 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Animated, BackHandler, Dimensions, PanResponder, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { Animated, BackHandler, Dimensions, PanResponder, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/use-colors";

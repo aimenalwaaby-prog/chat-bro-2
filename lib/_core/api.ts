@@ -199,16 +199,22 @@ export async function establishSession(token: string): Promise<boolean> {
 export async function checkServerConnection(): Promise<{ ok: boolean; url: string; latencyMs: number; capabilities?: Record<string, boolean> }> {
   const baseUrl = getApiBaseUrl();
   const started = Date.now();
-  try {
-    const response = await fetch(`${baseUrl.replace(/\/$/, "")}/api/health`, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      credentials: "include",
-      signal: AbortSignal.timeout(8000),
-    });
-    const payload = (await response.json().catch(() => ({}))) as { capabilities?: Record<string, boolean> };
-    return { ok: response.ok, url: baseUrl, latencyMs: Date.now() - started, capabilities: payload.capabilities };
-  } catch {
-    return { ok: false, url: baseUrl, latencyMs: Date.now() - started };
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await fetch(`${baseUrl.replace(/\/$/, "")}/api/health`, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        credentials: "include",
+        signal: AbortSignal.timeout(30_000),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { capabilities?: Record<string, boolean> };
+      return { ok: response.ok, url: baseUrl, latencyMs: Date.now() - started, capabilities: payload.capabilities };
+    } catch (error) {
+      lastError = error;
+      if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
   }
+  console.warn("[API] health check did not respond after retry", lastError);
+  return { ok: false, url: baseUrl, latencyMs: Date.now() - started };
 }

@@ -29,6 +29,7 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
   if (replicateModel) {
     const token = process.env.REPLICATE_API_TOKEN;
     if (!token) throw new Error("REPLICATE_API_TOKEN غير مهيأ على الخادم.");
+    if (!/^[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+$/.test(replicateModel)) throw new Error("اختر نموذج Replicate صالحًا بصيغة المالك/النموذج.");
     const response = await fetch(`https://api.replicate.com/v1/models/${replicateModel}/predictions`, {
       method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify({ input: { prompt: options.prompt } }), signal: AbortSignal.timeout(30_000),
@@ -54,10 +55,29 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
       body: JSON.stringify({ prompt: options.prompt }), signal: AbortSignal.timeout(120_000),
     });
     if (!response.ok) throw new Error(`fal.ai image request failed: ${response.status}`);
-    const payload = await response.json() as { images?: Array<{ url?: string }> };
+    let payload = await response.json() as { images?: Array<{ url?: string }>; request_id?: string; status_url?: string; response_url?: string; status?: string };
+    if (!payload.images?.length && payload.status_url && payload.response_url) {
+      for (let attempt = 0; attempt < 45; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        const statusResponse = await fetch(payload.status_url, { headers: { authorization: `Key ${token}` }, signal: AbortSignal.timeout(20_000) });
+        if (!statusResponse.ok) throw new Error(`fal.ai job status failed: ${statusResponse.status}`);
+        const status = await statusResponse.json() as { status?: string };
+        if (status.status === "FAILED" || status.status === "CANCELLED") throw new Error("تعذر إكمال مهمة fal.ai لإنشاء الصورة.");
+        if (status.status === "COMPLETED") {
+          const resultResponse = await fetch(payload.response_url, { headers: { authorization: `Key ${token}` }, signal: AbortSignal.timeout(30_000) });
+          if (!resultResponse.ok) throw new Error(`fal.ai result failed: ${resultResponse.status}`);
+          payload = await resultResponse.json() as typeof payload;
+          break;
+        }
+      }
+    }
     const url = payload.images?.[0]?.url;
     if (!url) throw new Error("fal.ai لم يُرجع صورة.");
     return { url };
+  }
+  if (!options.model && !process.env.OPENROUTER_API_KEY && !(process.env.BUILT_IN_FORGE_API_KEY && process.env.BUILT_IN_FORGE_API_URL) && !process.env.POLLINATIONS_API_KEY) {
+    if (process.env.FAL_KEY) return generateImage({ ...options, model: "fal:fal-ai/flux/schnell" });
+    if (process.env.REPLICATE_API_TOKEN) return generateImage({ ...options, model: "replicate:black-forest-labs/flux-schnell" });
   }
   const pollinationsKey = process.env.POLLINATIONS_API_KEY;
   const selectedPollinationsModel = options.model?.startsWith("pollinations:") ? options.model.slice("pollinations:".length) : undefined;
@@ -170,8 +190,8 @@ export type ListImageModelsResponse = {
 const plannedImageProviders: ImageModelInfo[] = [
   { id: "local-image:stable-diffusion-xl", model: "local-image:stable-diffusion-xl", provider: "Stable Diffusion · داخل التطبيق", access: "غير محدد", dailyLimit: "حسب جهاز المستخدم", status: "داخل التطبيق فقط", ready: false, runtime: "in-app" },
   { id: "local-image:flux-schnell", model: "local-image:flux-schnell", provider: "FLUX · داخل التطبيق", access: "غير محدد", dailyLimit: "حسب جهاز المستخدم", status: "داخل التطبيق فقط", ready: false, runtime: "in-app" },
-  { id: "replicate:sdxl", model: "replicate:sdxl", provider: "Replicate", access: "مدفوع", dailyLimit: "حسب رصيد المزود", status: "قريبًا", ready: false, runtime: "server" },
-  { id: "fal:flux", model: "fal:flux", provider: "fal.ai", access: "مدفوع", dailyLimit: "حسب رصيد المزود", status: "قريبًا", ready: false, runtime: "server" },
+  { id: "replicate:black-forest-labs/flux-schnell", model: "replicate:black-forest-labs/flux-schnell", provider: "Replicate", access: "مدفوع", dailyLimit: "حسب رصيد المزود", status: "قريبًا", ready: false, runtime: "server" },
+  { id: "fal:fal-ai/flux/schnell", model: "fal:fal-ai/flux/schnell", provider: "fal.ai", access: "مدفوع", dailyLimit: "حسب رصيد المزود", status: "قريبًا", ready: false, runtime: "server" },
   { id: "huggingface:sdxl", model: "huggingface:sdxl", provider: "Hugging Face", access: "غير محدد", dailyLimit: "حسب حصة المزود", status: "قريبًا", ready: false, runtime: "server" },
   { id: "stability:stable-image", model: "stability:stable-image", provider: "Stability AI", access: "مدفوع", dailyLimit: "حسب رصيد المزود", status: "قريبًا", ready: false, runtime: "server" },
   { id: "together:images", model: "together:images", provider: "Together AI", access: "مدفوع", dailyLimit: "حسب رصيد المزود", status: "قريبًا", ready: false, runtime: "server" },

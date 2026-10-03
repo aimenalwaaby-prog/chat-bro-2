@@ -16,7 +16,7 @@ export type ChatBroModel = {
   installCommand?: string;
   supportsVision?: boolean;
   verified?: boolean;
-  providerKey?: "chatbro" | "builtIn" | "openrouter" | "anthropic" | "gemini" | "groq" | "cloudflare" | "gateway" | "mistral" | "huggingface" | "deepinfra" | "nvidia" | "replicate" | "fal" | "local";
+  providerKey?: "chatbro" | "builtIn" | "openrouter" | "anthropic" | "gemini" | "groq" | "cloudflare" | "gateway" | "mistral" | "huggingface" | "deepinfra" | "nvidia" | "fireworks" | "replicate" | "fal" | "local";
   inputModalities?: string[];
   outputModalities?: string[];
   types?: string[];

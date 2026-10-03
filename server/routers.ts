@@ -194,7 +194,7 @@ function geminiParts(content: unknown): GeminiPart[] {
 }
 
 async function completeWithGemini(model: string, messages: SimpleMessage[]) {
-  const apiKey = getProviderKey("gemini", process.env.GEMINI_API_KEY);
+  const apiKey = getProviderKey("gemini", process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY);
   if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
   const modelId = model.replace(/^gemini:/, "").replace(/^models\//, "");
   const system = messages.filter((m) => m.role === "system").flatMap((m) => geminiParts(m.content));
@@ -202,9 +202,9 @@ async function completeWithGemini(model: string, messages: SimpleMessage[]) {
     role: m.role === "assistant" ? "model" : "user",
     parts: geminiParts(m.content),
   }));
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
     body: JSON.stringify({ ...(system.length ? { system_instruction: { parts: system } } : {}), contents, generationConfig: { maxOutputTokens: 1200 } }),
     signal: AbortSignal.timeout(90_000),
   });
@@ -316,6 +316,17 @@ function getConfiguredGateways() {
   }
   if (process.env.COMFYUI_BASE_URL) {
     gateways.comfyui ??= { baseUrl: process.env.COMFYUI_BASE_URL, apiKey: process.env.COMFYUI_API_KEY };
+  }
+  const directProviders: Array<[string, string, string]> = [
+    ["huggingface", "HF_TOKEN", "https://router.huggingface.co/v1"],
+    ["mistral", "MISTRAL_API_KEY", "https://api.mistral.ai/v1"],
+    ["deepinfra", "DEEPINFRA_API_KEY", "https://api.deepinfra.com/v1/openai"],
+    ["nvidia", "NVIDIA_API_KEY", "https://integrate.api.nvidia.com/v1"],
+    ["fireworks", "FIREWORKS_API_KEY", "https://api.fireworks.ai/inference/v1"],
+  ];
+  for (const [id, keyName, baseUrl] of directProviders) {
+    const apiKey = process.env[keyName];
+    if (apiKey) gateways[id] ??= { baseUrl, apiKey };
   }
   return gateways;
 }
@@ -553,10 +564,10 @@ export const appRouter = router({
     }),
 
     gemini: publicProcedure.query(async () => {
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = getProviderKey("gemini", process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY);
       if (!apiKey) return { available: false as const, models: [] as Array<{ id: string; name: string; supportsVision: boolean; contextLength?: number }> };
       try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}&pageSize=1000`, { signal: AbortSignal.timeout(15_000) });
+        const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000", { headers: { "x-goog-api-key": apiKey }, signal: AbortSignal.timeout(15_000) });
         if (!response.ok) return { available: false as const, models: [] };
         const payload = (await response.json()) as { models?: Array<{ name: string; displayName?: string; supportedGenerationMethods?: string[]; inputTokenLimit?: number; outputTokenLimit?: number }> };
         return {
@@ -647,10 +658,11 @@ export const appRouter = router({
               rows = payload.data ?? payload.models ?? [];
             }
           }
+          const providerLabels: Record<string, string> = { huggingface: "Hugging Face", mistral: "Mistral", deepinfra: "DeepInfra", nvidia: "NVIDIA NIM", fireworks: "Fireworks AI", pollinations: "Pollinations" };
           return rows.filter((item) => typeof item.id === "string" && item.id.length > 0).slice(0, 200).map((item) => ({
             id: `gateway:${gatewayId}:${item.id}`,
             name: item.name ?? item.id!,
-            provider: gatewayId === "pollinations" ? "Pollinations" : gatewayId,
+            provider: providerLabels[gatewayId.toLowerCase()] ?? gatewayId,
             contextLength: item.context_length,
             inputModalities: item.architecture?.input_modalities,
             outputModalities: item.architecture?.output_modalities ?? ["text"],

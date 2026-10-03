@@ -6,7 +6,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as Speech from "expo-speech";
 import * as FileSystem from "expo-file-system/legacy";
 import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from "expo-audio";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -28,7 +28,7 @@ import { useColors } from "@/hooks/use-colors";
 import { checkServerConnection } from "@/lib/_core/api";
 import { recordModelUse } from "@/lib/model-preferences";
 import { trpc } from "@/lib/trpc";
-import { chatBroModels, getModelTypeTags, isModelAvailableToSelect, isPlannedModel, type ChatBroModel } from "@/shared/chatbro-catalog";
+import { chatBroModels, getModelTypeTags, isModelAvailableToSelect, type ChatBroModel } from "@/shared/chatbro-catalog";
 import { listInstalledLocalModels, type InstalledLocalModel } from "@/lib/local-runtime";
 
 type Attachment = {
@@ -60,7 +60,6 @@ const welcome = (model?: string): Message => ({
 
 export default function ChatScreen() {
   const colors = useColors();
-  const router = useRouter();
   const params = useLocalSearchParams<{ prompt?: string; model?: string; directModel?: string }>();
   const initialModel = params.model ?? "";
   const [selectedModel, setSelectedModel] = useState(initialModel);
@@ -74,6 +73,8 @@ export default function ChatScreen() {
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [modelsOpen, setModelsOpen] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [imageGenerationEnabled, setImageGenerationEnabled] = useState(false);
+  const [providerOpen, setProviderOpen] = useState<Record<string, boolean>>({});
   const [deepThinkingEnabled, setDeepThinkingEnabled] = useState(false);
   const [localModels, setLocalModels] = useState<InstalledLocalModel[]>([]);
   const [serverCapabilities, setServerCapabilities] = useState<Record<string, boolean> | null>(null);
@@ -85,12 +86,12 @@ export default function ChatScreen() {
   const recorderState = useAudioRecorderState(recorder);
   const historyModel = selectedModel || "Chat Bro";
   const openRouterModels = trpc.models.openRouter.useQuery(undefined, { staleTime: 60_000, retry: 2 });
-  const builtInModels = trpc.models.builtIn.useQuery(undefined, { enabled: Boolean(serverCapabilities?.builtInLLM), staleTime: 60_000, retry: 1 });
-  const anthropicModels = trpc.models.anthropic.useQuery(undefined, { enabled: Boolean(serverCapabilities?.anthropic), staleTime: 60_000, retry: 1 });
-  const geminiModels = trpc.models.gemini.useQuery(undefined, { enabled: Boolean(serverCapabilities?.gemini), staleTime: 60_000, retry: 1 });
-  const groqModels = trpc.models.groq.useQuery(undefined, { enabled: Boolean(serverCapabilities?.groq), staleTime: 60_000, retry: 1 });
-  const cloudflareModels = trpc.models.cloudflare.useQuery(undefined, { enabled: Boolean(serverCapabilities?.cloudflare), staleTime: 60_000, retry: 1 });
-  const gatewayModels = trpc.models.gateways.useQuery(undefined, { enabled: Boolean(serverCapabilities?.gateway), staleTime: 60_000, retry: 1 });
+  const builtInModels = trpc.models.builtIn.useQuery(undefined, { staleTime: 60_000, retry: 1 });
+  const anthropicModels = trpc.models.anthropic.useQuery(undefined, { staleTime: 60_000, retry: 1 });
+  const geminiModels = trpc.models.gemini.useQuery(undefined, { staleTime: 60_000, retry: 1 });
+  const groqModels = trpc.models.groq.useQuery(undefined, { staleTime: 60_000, retry: 1 });
+  const cloudflareModels = trpc.models.cloudflare.useQuery(undefined, { staleTime: 60_000, retry: 1 });
+  const gatewayModels = trpc.models.gateways.useQuery(undefined, { staleTime: 60_000, retry: 1 });
   const dynamicOpenRouterModels = useMemo<ChatBroModel[]>(() => (openRouterModels.data?.models ?? []).filter((model) => !model.outputModalities?.length || model.outputModalities.includes("text")).map((model) => {
     const candidate: ChatBroModel = {
       name: model.name, modelId: `openrouter:${model.id}`, provider: "OpenRouter", providerKey: "openrouter", icon: "hub",
@@ -126,7 +127,7 @@ export default function ChatScreen() {
   })), [anthropicModels.data]);
   const dynamicGatewayModels = useMemo<ChatBroModel[]>(() => (gatewayModels.data?.models ?? []).filter((model) => !model.outputModalities?.length || model.outputModalities.includes("text")).map((model) => {
     const providerName = model.provider.toLowerCase();
-    const providerKey: ChatBroModel["providerKey"] = providerName.includes("mistral") ? "mistral" : providerName.includes("hugging") ? "huggingface" : providerName.includes("deepinfra") ? "deepinfra" : providerName.includes("nvidia") ? "nvidia" : providerName.includes("replicate") ? "replicate" : providerName.includes("fal") ? "fal" : "gateway";
+    const providerKey: ChatBroModel["providerKey"] = providerName.includes("mistral") ? "mistral" : providerName.includes("hugging") ? "huggingface" : providerName.includes("deepinfra") ? "deepinfra" : providerName.includes("nvidia") ? "nvidia" : providerName.includes("fireworks") ? "fireworks" : providerName.includes("replicate") ? "replicate" : providerName.includes("fal") ? "fal" : "gateway";
     return {
     name: `${model.name} · ${model.provider}`, modelId: model.id, provider: model.provider, providerKey, icon: "hub", tone: "limited",
     status: "متاح من البوابة", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب البوابة", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway", inputModalities: model.inputModalities ?? [], outputModalities: model.outputModalities ?? ["text"], supportsVision: model.inputModalities?.includes("image"), verified: true,
@@ -137,6 +138,16 @@ export default function ChatScreen() {
     const existing = new Set(staticModels.map((model) => model.modelId));
     return [...staticModels, ...liveModels.filter((model) => !existing.has(model.modelId))];
   }, [dynamicAnthropicModels, dynamicBuiltInModels, dynamicCloudflareModels, dynamicGeminiModels, dynamicGatewayModels, dynamicGroqModels, dynamicOpenRouterModels, serverCapabilities]);
+  const providerGroups = useMemo(() => {
+    const groups = new Map<string, { key: string; label: string; models: ChatBroModel[] }>();
+    for (const model of cloudChatModels) {
+      const key = model.providerKey && model.providerKey !== "builtIn" && model.providerKey !== "chatbro" ? model.providerKey : model.provider;
+      const group = groups.get(key) ?? { key, label: model.provider.replace(/ · (مباشر|الخادم المدمج)$/u, ""), models: [] };
+      group.models.push(model);
+      groups.set(key, group);
+    }
+    return [...groups.values()];
+  }, [cloudChatModels]);
   const selectedCatalogModel = cloudChatModels.find((model) => model.name === selectedModel);
   const selectedRuntimeModel = selectedCatalogModel?.modelId;
   useEffect(() => { let active = true; listInstalledLocalModels().then((items) => active && setLocalModels(items)); return () => { active = false; }; }, []);
@@ -146,7 +157,6 @@ export default function ChatScreen() {
       if (!active) return;
       const capabilities = result.capabilities ?? {};
       setServerCapabilities(capabilities);
-      setWebSearchEnabled(Boolean(capabilities.openrouter));
     });
     return () => { active = false; };
   }, []);
@@ -188,7 +198,6 @@ export default function ChatScreen() {
   const canUseWebSearch = Boolean(serverCapabilities?.openrouter) && !localModelSelected;
   const canGenerateImage = Boolean(serverCapabilities?.openrouter || serverCapabilities?.forgeImages || serverCapabilities?.imageService || serverCapabilities?.pollinations || serverCapabilities?.replicate || serverCapabilities?.fal);
   const canAttachImage = !localModelSelected && (!selectedModel || Boolean(selectedCatalogModel?.supportsVision || selectedCatalogModel?.inputModalities?.includes("image")));
-  useEffect(() => { if (localModelSelected) setWebSearchEnabled(false); else if (serverCapabilities?.openrouter) setWebSearchEnabled(true); }, [localModelSelected, serverCapabilities?.openrouter]);
 
   const addImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -295,9 +304,12 @@ export default function ChatScreen() {
 
   const sendMessage = async () => {
     const text = input.trim();
-    if ((!text && attachments.length === 0) || isTyping) return;
+    if ((!text && attachments.length === 0) || isTyping) {
+      if (!text && imageGenerationEnabled) Alert.alert("أضف وصف الصورة", "اكتب وصفًا ثم أرسل الرسالة لإنشاء الصورة.");
+      return;
+    }
     const localModel = localModels.find((model) => model.name === selectedModel);
-    const isImageCommand = /^\/image(?:\s|$)/i.test(text);
+    const isImageCommand = imageGenerationEnabled || /^\/image(?:\s|$)/i.test(text);
     const imagePrompt = text.replace(/^\/image(?:\s+|$)/i, "").trim();
     if (localModel && attachments.length) {
       Alert.alert("المحادثة المحلية نصية", "النماذج المثبتة حاليًا لا تدعم الصور أو الملفات. لن تُرفع المرفقات إلى الخادم.");
@@ -307,20 +319,12 @@ export default function ChatScreen() {
       Alert.alert("البحث غير متاح محليًا", "للحفاظ على خصوصية المحادثة المحلية، لا تُرسل رسائلها إلى الإنترنت. اختر نموذجًا سحابيًا للبحث.");
       return;
     }
-    if (webSearchEnabled && !serverCapabilities?.openrouter) {
-      Alert.alert("البحث غير مهيأ", "بحث الويب يحتاج مفتاح OpenRouter مضبوطًا على الخادم.");
-      return;
-    }
     if (isImageCommand && !imagePrompt) {
       Alert.alert("أضف وصف الصورة", "اكتب وصفًا بعد /image ثم أرسل الطلب.");
       return;
     }
     if (isImageCommand && attachments.length) {
       Alert.alert("أنشئ صورة من وصف نصي", "أزل المرفقات قبل توليد صورة جديدة.");
-      return;
-    }
-    if (isImageCommand && !canGenerateImage) {
-      Alert.alert("توليد الصور غير مهيأ", "يلزم تفعيل OpenRouter أو Forge ImageService في إعدادات الخادم.");
       return;
     }
     setIsTyping(true);
@@ -357,6 +361,7 @@ export default function ChatScreen() {
       } catch (error) {
         setMessages((current) => [...current, { id: `${Date.now()}-image-error`, role: "assistant", text: error instanceof Error ? error.message : "تعذر إنشاء الصورة.", time: "الآن" }]);
       }
+      setImageGenerationEnabled(false);
       setIsTyping(false);
       return;
     }
@@ -476,33 +481,41 @@ export default function ChatScreen() {
                   </Pressable>
                 ))}</> : null}
                 <Text className="px-2 pt-2 pb-1 text-right text-[10px] font-extrabold text-primary">☁️ النماذج السحابية</Text>
-                {cloudChatModels.map((model) => (
-                  <Pressable
-                    key={model.name}
-                    disabled={isPlannedModel(model.modelId)}
-                    onPress={() => { setSelectedModel(model.name); setModelsOpen(false); }}
-                    style={({ pressed }) => [
-                      {
-                        backgroundColor: model.name === selectedModel ? colors.primary : colors.surface,
-                        borderColor: model.name === selectedModel ? colors.primary : colors.border,
-                      },
-                        pressed && { opacity: 0.72 },
-                        isPlannedModel(model.modelId) && { opacity: 0.58 },
-                    ]}
-                    className="min-h-[52px] flex-row-reverse items-center rounded-xl border px-3 py-2"
-                  >
-                    <MaterialIcons name={model.icon as never} size={17} color={model.name === selectedModel ? "#062034" : colors.muted} />
-                    <View className="mr-2 flex-1">
-                      <Text numberOfLines={1} className="text-right text-[11px] font-bold text-foreground">{model.name}</Text>
-                      <Text numberOfLines={1} className="text-right text-[9px] text-muted">{model.provider} · {model.category}</Text>
-                      <View className="mt-1 flex-row-reverse items-center gap-1">
-                        <StatusBadge label={model.status} tone={model.tone} />
-                        {model.requiresKey ? <Text className="text-[9px] text-muted">مفتاح API</Text> : null}
-                      </View>
-                    </View>
-                    {model.name === selectedModel ? <MaterialIcons name="check-circle" size={17} color="#062034" /> : null}
-                  </Pressable>
-                ))}
+                {providerGroups.map((group) => {
+                  const selectedInGroup = group.models.some((model) => model.name === selectedModel);
+                  const expanded = providerOpen[group.key] ?? selectedInGroup;
+                  return <View key={group.key} className="overflow-hidden rounded-xl border" style={{ borderColor: colors.border }}>
+                    <Pressable onPress={() => setProviderOpen((current) => ({ ...current, [group.key]: !expanded }))} className="min-h-[42px] flex-row-reverse items-center justify-between px-3" style={{ backgroundColor: colors.surface }}>
+                      <View className="flex-row-reverse items-center gap-2"><MaterialIcons name="hub" size={16} color={selectedInGroup ? colors.primary : colors.muted} /><Text className="text-right text-[10px] font-extrabold text-foreground">{group.label}</Text><Text className="text-[9px] text-muted">{group.models.length}</Text></View>
+                      <MaterialIcons name={expanded ? "expand-less" : "expand-more"} size={18} color={colors.muted} />
+                    </Pressable>
+                    {expanded ? <View className="gap-1 p-1.5">{group.models.map((model) => (
+                      <Pressable
+                        key={model.name}
+                        onPress={() => { setSelectedModel(model.name); setModelsOpen(false); }}
+                        style={({ pressed }) => [
+                          {
+                            backgroundColor: model.name === selectedModel ? colors.primary : colors.surface,
+                            borderColor: model.name === selectedModel ? colors.primary : colors.border,
+                          },
+                          pressed && { opacity: 0.72 },
+                        ]}
+                        className="min-h-[52px] flex-row-reverse items-center rounded-xl border px-3 py-2"
+                      >
+                        <MaterialIcons name={model.icon as never} size={17} color={model.name === selectedModel ? "#062034" : colors.muted} />
+                        <View className="mr-2 flex-1">
+                          <Text numberOfLines={1} className="text-right text-[11px] font-bold text-foreground">{model.name}</Text>
+                          <Text numberOfLines={1} className="text-right text-[9px] text-muted">{model.provider} · {model.category}</Text>
+                          <View className="mt-1 flex-row-reverse items-center gap-1">
+                            <StatusBadge label={model.status} tone={model.tone} />
+                            {model.requiresKey ? <Text className="text-[9px] text-muted">مفتاح API</Text> : null}
+                          </View>
+                        </View>
+                        {model.name === selectedModel ? <MaterialIcons name="check-circle" size={17} color="#062034" /> : null}
+                      </Pressable>
+                    ))}</View> : null}
+                  </View>;
+                })}
               </ScrollView>
             </View>
           ) : null}
@@ -637,31 +650,26 @@ export default function ChatScreen() {
           <View className="mb-2 flex-row-reverse flex-wrap items-center justify-between gap-2">
             <Pressable
               accessibilityRole="button"
-              accessibilityState={{ disabled: !canUseWebSearch }}
-              disabled={!canUseWebSearch}
+              accessibilityState={{ selected: webSearchEnabled }}
               onPress={() => setWebSearchEnabled((enabled) => !enabled)}
-              style={({ pressed }) => [{ opacity: !canUseWebSearch ? 0.45 : pressed ? 0.7 : 1 }]}
+              style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
               className="flex-row-reverse items-center gap-1 rounded-full border px-3 py-1.5"
             >
               <MaterialIcons name="language" size={15} color={webSearchEnabled ? colors.primary : colors.muted} />
               <Text className="text-[10px] font-bold" style={{ color: webSearchEnabled ? colors.primary : colors.muted }}>
-                {localModelSelected ? "المحلي بلا إنترنت" : serverCapabilities === null ? "الخادم لا يستجيب" : !serverCapabilities.openrouter ? "بحث الويب · قريبًا" : webSearchEnabled ? "بحث الويب مفعّل" : "بحث الويب"}
+                {localModelSelected ? (webSearchEnabled ? "بحث الويب · اختر نموذجًا سحابيًا" : "بحث الويب · محلي غير مدعوم") : !canUseWebSearch ? (webSearchEnabled ? "بحث الويب مفعّل · اتصال مطلوب" : "بحث الويب · يتحقق عند الإرسال") : webSearchEnabled ? "بحث الويب مفعّل" : "بحث الويب"}
               </Text>
             </Pressable>
             <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="إنشاء صورة بالذكاء الاصطناعي"
-              accessibilityState={{ disabled: !canGenerateImage }}
-              disabled={!canGenerateImage}
-              onPress={() => {
-                const draftedPrompt = input.trim().replace(/^\/image(?:\s+|$)/i, "");
-                router.push({ pathname: "/(tabs)/images", params: draftedPrompt ? { prompt: draftedPrompt } : {} });
-              }}
-              style={({ pressed }) => [{ opacity: !canGenerateImage ? 0.45 : pressed ? 0.7 : 1 }]}
-              className="flex-row-reverse items-center gap-1 rounded-full border px-3 py-1.5"
-            >
-              <MaterialIcons name="auto-awesome" size={15} color={canGenerateImage ? colors.primary : colors.muted} />
-              <Text className="text-[10px] font-bold" style={{ color: canGenerateImage ? colors.primary : colors.muted }}>إنشاء صورة</Text>
+                accessibilityRole="button"
+                accessibilityLabel="إنشاء صورة بالذكاء الاصطناعي"
+                accessibilityState={{ selected: imageGenerationEnabled }}
+                onPress={() => setImageGenerationEnabled((enabled) => !enabled)}
+                style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+                className={`flex-row-reverse items-center gap-1 rounded-full border px-3 py-1.5 ${imageGenerationEnabled ? "bg-[#E6F8FD]" : ""}`}
+              >
+                <MaterialIcons name={imageGenerationEnabled ? "toggle-on" : "toggle-off"} size={17} color={canGenerateImage ? colors.primary : colors.muted} />
+                <Text className="text-[10px] font-bold" style={{ color: imageGenerationEnabled || canGenerateImage ? colors.primary : colors.muted }}>{imageGenerationEnabled ? "إنشاء الصور مفعّل" : canGenerateImage ? "إنشاء الصور" : "إنشاء الصور · يتحقق عند الإرسال"}</Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
@@ -674,8 +682,7 @@ export default function ChatScreen() {
               <Text className="text-[10px] font-bold" style={{ color: deepThinkingEnabled ? colors.primary : colors.muted }}>{deepThinkingEnabled ? "تفكير عميق مفعّل" : "تفكير عميق"}</Text>
             </Pressable>
           </View>
-          {webSearchEnabled ? <Text className="mb-2 text-right text-[9px] leading-4 text-muted">عند التفعيل يُرسل نص السؤال إلى الخادم وOpenRouter للبحث، وقد يُحتسب استخدام إضافي. لا يُستخدم في المحادثة المحلية.</Text> : null}
-          {canGenerateImage ? <Text className="mb-2 text-right text-[9px] text-muted">توليد الصور يرسل الوصف إلى الخادم وقد يستهلك رصيد مزود الذكاء الاصطناعي.</Text> : null}
+          {webSearchEnabled || imageGenerationEnabled ? <Text className="mb-2 text-right text-[9px] leading-4 text-muted">{webSearchEnabled ? "البحث مفعّل: يجلب مصادر حديثة عبر OpenRouter." : ""}{webSearchEnabled && imageGenerationEnabled ? " · " : ""}{imageGenerationEnabled ? "إنشاء الصور مفعّل: أرسل وصفًا نصيًا لإنشاء صورة." : ""} قد يُحتسب استخدام لدى المزود.</Text> : null}
           {selectedModel && !localModelSelected && !canAttachImage ? <Text className="mb-2 text-right text-[9px] text-muted">هذا النموذج لا يعلن دعم إدخال الصور؛ اختر نموذجًا يدعم فهم الصور أو استخدم أداة إنشاء الصور.</Text> : null}
           <View className="flex-row-reverse items-end gap-2">
             <Pressable
