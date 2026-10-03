@@ -24,4 +24,9 @@ describe("provider key candidates", () => {
     process.env.PROVIDER_API_KEYS_JSON = "{}";
     expect(getProviderKeyCandidates("gemini", "direct-current")).toEqual(["direct-current"]);
   });
+
+  it("tries both Gemini environment key names after the provider pool", () => {
+    process.env.PROVIDER_API_KEYS_JSON = JSON.stringify({ gemini: ["pool-a"] });
+    expect(getProviderKeyCandidates("gemini", ["gemini-env", "google-env"])).toEqual(["pool-a", "gemini-env", "google-env"]);
+  });
 });

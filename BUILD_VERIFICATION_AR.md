@@ -3,7 +3,7 @@
 ## البناء والفحوص
 
 - `pnpm check`: ناجح.
-- `pnpm test`: ناجح — 7 ملفات و15 اختبارًا.
+- `pnpm test`: ناجح — 7 ملفات و16 اختبارًا.
 - `pnpm lint`: ناجح؛ تحذير Node عن نوع الوحدة في ملف إعداد ESLint غير مانع.
 - `pnpm build`: ناجح.
 - `npx expo export --platform web`: ناجح، ويضم APK في مسار التنزيل العام.

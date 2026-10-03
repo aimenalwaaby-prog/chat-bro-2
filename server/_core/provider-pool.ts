@@ -19,15 +19,16 @@ export function getProviderKey(provider: string, fallback?: string) {
   return key;
 }
 
-/** Rotate through configured keys, then include the provider-specific environment key as a last-resort fallback. */
-export function getProviderKeyCandidates(provider: string, fallback?: string) {
+/** Rotate through configured keys, then include provider-specific environment keys as last-resort fallbacks. */
+export function getProviderKeyCandidates(provider: string, fallback?: string | readonly (string | undefined)[]) {
   const keys = configuredKeys()[provider] ?? [];
   const cursor = cursors.get(provider) ?? 0;
   if (keys.length) cursors.set(provider, cursor + 1);
   const offset = keys.length ? cursor % keys.length : 0;
   const rotated = [...keys.slice(offset), ...keys.slice(0, offset)];
-  if (fallback) rotated.push(fallback);
-  return [...new Set(rotated.filter((key): key is string => typeof key === "string" && key.length > 0))];
+  const directKeys = (typeof fallback === "string" ? [fallback] : fallback ?? [])
+    .filter((key): key is string => typeof key === "string" && key.length > 0);
+  return [...new Set([...rotated, ...directKeys])];
 }
 
 export function resetProviderPoolForTests() {

@@ -3,9 +3,9 @@
 ## فحوص المصدر
 
 - `pnpm check`: ناجح.
-- `pnpm test`: ناجح — 7 ملفات، 15 اختبارًا.
+- `pnpm test`: ناجح — 7 ملفات، 16 اختبارًا.
 - `pnpm lint`: ناجح دون أخطاء ESLint؛ ظهر تحذير Node غير مانع عن نوع الوحدة في إعداد ESLint.
-- `pnpm build`: ناجح — حزمة الخادم `dist/index.js` بحجم 112.6 kB.
+- `pnpm build`: ناجح — حزمة الخادم `dist/index.js` بحجم 112.7 kB.
 - `npx expo export --platform web`: ناجح، و`dist/downloads/chatbro-latest.apk` يطابق ملف التحميل.
 - `git diff --check`: ناجح.
 

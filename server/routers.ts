@@ -194,7 +194,7 @@ function geminiParts(content: unknown): GeminiPart[] {
 }
 
 async function completeWithGemini(model: string, messages: SimpleMessage[]) {
-  const apiKeys = getProviderKeyCandidates("gemini", process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY);
+  const apiKeys = getProviderKeyCandidates("gemini", [process.env.GEMINI_API_KEY, process.env.GOOGLE_API_KEY]);
   if (!apiKeys.length) throw new Error("GEMINI_API_KEY is not configured");
   const modelId = model.replace(/^gemini:/, "").replace(/^models\//, "");
   const system = messages.filter((m) => m.role === "system").flatMap((m) => geminiParts(m.content));
@@ -569,7 +569,7 @@ export const appRouter = router({
     }),
 
     gemini: publicProcedure.query(async () => {
-      const apiKeys = getProviderKeyCandidates("gemini", process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY);
+      const apiKeys = getProviderKeyCandidates("gemini", [process.env.GEMINI_API_KEY, process.env.GOOGLE_API_KEY]);
       if (!apiKeys.length) return { available: false as const, models: [] as Array<{ id: string; name: string; supportsVision: boolean; contextLength?: number }> };
       let lastStatus: number | undefined;
       for (const apiKey of apiKeys) {

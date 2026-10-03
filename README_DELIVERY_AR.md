@@ -14,6 +14,6 @@
 
 ## نتيجة التحقق
 
-نجحت فحوص TypeScript والاختبارات (15 اختبارًا) وESLint و`pnpm build` وتصدير الويب وتجميع Android. تحقق `aapt` من `com.app.chatbro` و`versionName=1.0.2` و`versionCode=3` و`minSdk=24`، وتحقق `apksigner` من التوقيع. APK موقّع بمفتاح Android Debug الافتراضي؛ لا يصلح مفتاحًا لإصدار Google Play.
+نجحت فحوص TypeScript والاختبارات (16 اختبارًا) وESLint و`pnpm build` وتصدير الويب وتجميع Android. تحقق `aapt` من `com.app.chatbro` و`versionName=1.0.2` و`versionCode=3` و`minSdk=24`، وتحقق `apksigner` من التوقيع. APK موقّع بمفتاح Android Debug الافتراضي؛ لا يصلح مفتاحًا لإصدار Google Play.
 
 لم يُثبّت APK على هاتف فعلي بعد. أُبقيت مفاتيح API في خادم Render فقط؛ لا تدخل في APK أو المصدر. لم أرسل طلبًا حيًا لتوليد صورة/نص قد يستهلك رصيدًا.
