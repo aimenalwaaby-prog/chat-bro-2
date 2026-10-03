@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Device from "expo-device";
 import { Platform } from "react-native";
+import { getDeviceTier, getEffectiveRamGb, getLocalRuntimeTuning, normalizePhysicalRamGb } from "@/shared/device-performance";
 
 export type LocalModelDefinition = {
   id: string;
@@ -34,7 +35,7 @@ export const LOCAL_MODELS: LocalModelDefinition[] = [
     quant: "Q4_K_M",
     description: "أفضل نقطة بداية للأجهزة ذات الذاكرة المحدودة.",
     recommendedMaxRamGb: 8,
-    minRamGb: 2,
+    minRamGb: 2.5,
   },
   {
     id: "smollm2-135m-q4km",
@@ -56,9 +57,9 @@ export const LOCAL_MODELS: LocalModelDefinition[] = [
     sizeBytes: 1_282_439_264,
     paramsB: 1.7,
     quant: "Q4_K_M",
-    description: "أقوى، لكنه ثقيل نسبيًا على هاتف بذاكرة 4GB.",
+    description: "أقوى من نسخة 0.6B؛ لا يُنصح به قبل توفر هامش ذاكرة يقارب 8GB.",
     recommendedMaxRamGb: 12,
-    minRamGb: 4,
+    minRamGb: 7.5,
   },
   {
     id: "gemma3-1b-q4km",
@@ -70,7 +71,7 @@ export const LOCAL_MODELS: LocalModelDefinition[] = [
     quant: "Q4_K_M",
     description: "نموذج خفيف نسبيًا ومناسب للتجارب المحلية على أجهزة Android.",
     recommendedMaxRamGb: 8,
-    minRamGb: 3,
+    minRamGb: 4.5,
   },
   {
     id: "llama32-1b-q4km",
@@ -82,7 +83,7 @@ export const LOCAL_MODELS: LocalModelDefinition[] = [
     quant: "Q4_K_M",
     description: "خيار صغير للمحادثة المحلية مع استهلاك أقل من النماذج الأكبر.",
     recommendedMaxRamGb: 8,
-    minRamGb: 3,
+    minRamGb: 4.5,
   },
   {
     id: "phi35-mini-q4km",
@@ -94,7 +95,7 @@ export const LOCAL_MODELS: LocalModelDefinition[] = [
     quant: "Q4_K_M",
     description: "أقوى محليًا لكنه ثقيل؛ يفضّل للأجهزة ذات الذاكرة الأعلى.",
     recommendedMaxRamGb: 12,
-    minRamGb: 6,
+    minRamGb: 11,
   },
   {
     id: "qwen3-4b-q4km",
@@ -104,9 +105,9 @@ export const LOCAL_MODELS: LocalModelDefinition[] = [
     sizeBytes: 0,
     paramsB: 4.0,
     quant: "Q4_K_M",
-    description: "نسخة أقوى للمحادثة والبرمجة؛ تحتاج ذاكرة كبيرة ويفضل 8GB فأكثر.",
+    description: "نسخة أقوى للمحادثة والبرمجة؛ تحتاج هامش ذاكرة كبيرًا، ويفضل 12GB فأكثر.",
     recommendedMaxRamGb: 16,
-    minRamGb: 6,
+    minRamGb: 11,
   },
   {
     id: "qwen25-1.5b-q4km",
@@ -118,7 +119,7 @@ export const LOCAL_MODELS: LocalModelDefinition[] = [
     quant: "Q4_K_M",
     description: "خيار متوسط جيد للمحادثة، لكنه يحتاج ذاكرة إضافية أثناء التشغيل.",
     recommendedMaxRamGb: 12,
-    minRamGb: 4,
+    minRamGb: 6.5,
   },
   {
     id: "tinyllama-1.1b-q4km",
@@ -130,7 +131,7 @@ export const LOCAL_MODELS: LocalModelDefinition[] = [
     quant: "Q4_K_M",
     description: "نموذج محادثة صغير ومجرب كبداية للأجهزة المتوسطة.",
     recommendedMaxRamGb: 8,
-    minRamGb: 3,
+    minRamGb: 4.5,
   },
   {
     id: "llama32-3b-q4km",
@@ -142,7 +143,7 @@ export const LOCAL_MODELS: LocalModelDefinition[] = [
     quant: "Q4_K_M",
     description: "خيار أقوى للمحادثة والبرمجة؛ يحتاج مساحة وذاكرة أكبر.",
     recommendedMaxRamGb: 16,
-    minRamGb: 6,
+    minRamGb: 9.5,
   },
   {
     id: "qwen25-coder-3b-q4km",
@@ -154,7 +155,7 @@ export const LOCAL_MODELS: LocalModelDefinition[] = [
     quant: "Q4_K_M",
     description: "خيار محلي متخصص في البرمجة مع استهلاك أقل من نماذج 7B.",
     recommendedMaxRamGb: 16,
-    minRamGb: 6,
+    minRamGb: 9.5,
   },
   {
     id: "gemma3-4b-q4km",
@@ -166,7 +167,7 @@ export const LOCAL_MODELS: LocalModelDefinition[] = [
     quant: "Q4_K_M",
     description: "نموذج متعدد اللغات مع فهم جيد للتعليمات؛ ثقيل على الهاتف.",
     recommendedMaxRamGb: 24,
-    minRamGb: 8,
+    minRamGb: 11,
   },
 ];
 
@@ -190,20 +191,31 @@ async function deleteModelFile(path: string) {
 }
 
 export function getDeviceProfile() {
-  const totalMemoryGb = Device.totalMemory ? Device.totalMemory / 1024 ** 3 : 4;
-  const is64BitAndroid = true; // The shipped Android target is arm64; runtime performs final native compatibility checks.
+  const memoryKnown = typeof Device.totalMemory === "number" && Number.isFinite(Device.totalMemory) && Device.totalMemory > 0;
+  const totalMemoryGb = normalizePhysicalRamGb(Device.totalMemory ? Device.totalMemory / 1024 ** 3 : null);
+  const supportedCpuArchitectures = Device.supportedCpuArchitectures ?? [];
+  const is64BitAndroid = Platform.OS === "android" && supportedCpuArchitectures.some((arch) => /arm64|aarch64|x86_64/i.test(arch));
+  const deviceYearClass = Device.deviceYearClass;
   return {
     totalMemoryGb,
+    memoryKnown,
     is64BitAndroid,
+    supportedCpuArchitectures,
+    deviceYearClass,
+    effectiveMemoryGb: getEffectiveRamGb(totalMemoryGb, deviceYearClass),
+    tier: getDeviceTier(totalMemoryGb, deviceYearClass),
     manufacturer: Device.manufacturer ?? "Unknown",
     modelName: Device.modelName ?? "Unknown",
   };
 }
 
 export function compatibility(model: LocalModelDefinition) {
-  const ram = getDeviceProfile().totalMemoryGb;
-  if (ram < model.minRamGb) return { level: "blocked" as const, label: "غير موصى به", reason: "ذاكرة الجهاز أقل من الحد الأدنى التقريبي لهذا النموذج." };
-  if (ram > model.recommendedMaxRamGb) return { level: "recommended" as const, label: "مناسب", reason: "مناسب ضمن تقدير الذاكرة المتاح." };
+  const profile = getDeviceProfile();
+  if (Platform.OS !== "android") return { level: "blocked" as const, label: "Android فقط", reason: "تشغيل ملفات GGUF المحلية متاح على Android فقط." };
+  if (!profile.is64BitAndroid) return { level: "blocked" as const, label: "معمارية غير مدعومة", reason: "التشغيل المحلي يحتاج Android بمعمارية 64-bit؛ بقية وظائف التطبيق تبقى متاحة." };
+  const ram = profile.effectiveMemoryGb;
+  if (ram < model.minRamGb) return { level: "blocked" as const, label: "غير مناسب لذاكرة الجهاز", reason: `نحمي الجهاز من تحميل هذا النموذج؛ الحد الآمن التقديري ${model.minRamGb}GB أو أكثر.` };
+  if (ram >= model.recommendedMaxRamGb) return { level: "recommended" as const, label: "مناسب", reason: "مناسب ضمن هامش الذاكرة والأداء المقدّر لهذا الجهاز." };
   if (model.paramsB <= 0.7) return { level: "recommended" as const, label: "مناسب", reason: "حجم صغير ومناسب غالبًا للأجهزة محدودة الذاكرة." };
   return { level: "warning" as const, label: "ثقيل", reason: "قد يعمل ببطء أو يتوقف بسبب ضغط الذاكرة." };
 }
@@ -322,7 +334,7 @@ export async function downloadLocalModel(model: LocalModelDefinition, onProgress
 }
 
 export async function removeLocalModel(model: InstalledLocalModel) {
-  contexts.get(model.id)?.release?.();
+  await Promise.resolve(contexts.get(model.id)?.release?.()).catch(() => undefined);
   contexts.delete(model.id);
   const definition = LOCAL_MODELS.find((item) => item.id === model.id);
   if (definition) await deleteModelFile(`${modelDir}${definition.fileName}`);
@@ -332,18 +344,29 @@ export async function removeLocalModel(model: InstalledLocalModel) {
 
 async function getContext(model: InstalledLocalModel) {
   for (const [id, ctx] of contexts) {
-    if (id !== model.id) { ctx?.release?.(); contexts.delete(id); }
+    if (id !== model.id) {
+      await Promise.resolve(ctx?.release?.()).catch(() => undefined);
+      contexts.delete(id);
+    }
   }
   const existing = contexts.get(model.id);
   if (existing) return existing;
-  const ram = getDeviceProfile().totalMemoryGb;
-  const nCtx = ram <= 4 ? 1024 : ram <= 6 ? 1536 : 2048;
+  const suitability = compatibility(model);
+  if (suitability.level === "blocked") throw new Error(suitability.reason);
+  const profile = getDeviceProfile();
+  const tuning = getLocalRuntimeTuning(profile.totalMemoryGb, profile.deviceYearClass);
   const { initLlama } = await getLlamaModule();
   const context = await initLlama({
     model: asFileUri(model.path),
     use_mlock: false,
-    n_ctx: nCtx,
-    n_batch: 256,
+    use_mmap: true,
+    n_ctx: tuning.nCtx,
+    n_batch: tuning.nBatch,
+    n_ubatch: tuning.nUBatch,
+    n_threads: tuning.nThreads,
+    n_parallel: 1,
+    cache_type_k: tuning.cacheType,
+    cache_type_v: tuning.cacheType,
     n_gpu_layers: 0,
   });
   contexts.set(model.id, context);
@@ -355,12 +378,33 @@ export async function inspectLocalModel(path: string) {
   return loadLlamaModelInfo(asFileUri(path));
 }
 
+export async function releaseLocalContexts() {
+  const loaded = [...contexts.values()];
+  contexts.clear();
+  await Promise.all(loaded.map(async (context) => {
+    try { await context?.release?.(); } catch { /* The OS may already have reclaimed the native context. */ }
+  }));
+}
+
 export async function completeLocal(model: InstalledLocalModel, messages: Array<{ role: "system" | "user" | "assistant"; content: string }>, onToken?: (token: string) => void) {
   const context = await getContext(model);
+  const profile = getDeviceProfile();
+  const tuning = getLocalRuntimeTuning(profile.totalMemoryGb, profile.deviceYearClass);
+  const systemMessage = messages.find((message) => message.role === "system");
+  let remainingCharacters = Math.max(120, tuning.maxPromptCharacters - (systemMessage?.content.length ?? 0));
+  const recentHistory = messages.filter((message) => message.role !== "system").slice(-tuning.maxHistoryMessages);
+  const boundedHistory: typeof recentHistory = [];
+  for (const message of [...recentHistory].reverse()) {
+    if (remainingCharacters <= 0) break;
+    const content = message.content.length > remainingCharacters ? message.content.slice(-remainingCharacters) : message.content;
+    boundedHistory.unshift({ ...message, content });
+    remainingCharacters -= content.length;
+  }
+  const boundedMessages = [...(systemMessage ? [systemMessage] : []), ...boundedHistory];
   const result = await context.completion(
     {
-      messages,
-      n_predict: getDeviceProfile().totalMemoryGb <= 4 ? 384 : 768,
+      messages: boundedMessages,
+      n_predict: tuning.nPredict,
       temperature: 0.35,
       top_p: 0.9,
     },

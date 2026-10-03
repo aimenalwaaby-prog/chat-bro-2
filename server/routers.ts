@@ -10,7 +10,7 @@ import { generateImage, listImageModels } from "./_core/imageGeneration";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import * as db from "./db";
 import { z } from "zod";
-import { getProviderKey } from "./_core/provider-pool";
+import { getProviderKey, getProviderKeyCandidates } from "./_core/provider-pool";
 import { enforceUsage, getSubscriptionConfig, getUsagePolicy } from "./_core/usage-policy";
 
 async function generateImageViaMediaService(input: Parameters<typeof generateImage>[0]) {
@@ -194,27 +194,32 @@ function geminiParts(content: unknown): GeminiPart[] {
 }
 
 async function completeWithGemini(model: string, messages: SimpleMessage[]) {
-  const apiKey = getProviderKey("gemini", process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY);
-  if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
+  const apiKeys = getProviderKeyCandidates("gemini", process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY);
+  if (!apiKeys.length) throw new Error("GEMINI_API_KEY is not configured");
   const modelId = model.replace(/^gemini:/, "").replace(/^models\//, "");
   const system = messages.filter((m) => m.role === "system").flatMap((m) => geminiParts(m.content));
   const contents = messages.filter((m) => m.role !== "system").map((m) => ({
     role: m.role === "assistant" ? "model" : "user",
     parts: geminiParts(m.content),
   }));
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
-    body: JSON.stringify({ ...(system.length ? { system_instruction: { parts: system } } : {}), contents, generationConfig: { maxOutputTokens: 1200 } }),
-    signal: AbortSignal.timeout(90_000),
-  });
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(`Gemini request failed: ${response.status}${detail ? ` - ${detail.slice(0, 300)}` : ""}`);
+  for (const apiKey of apiKeys) {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
+      body: JSON.stringify({ ...(system.length ? { system_instruction: { parts: system } } : {}), contents, generationConfig: { maxOutputTokens: 1200 } }),
+      signal: AbortSignal.timeout(90_000),
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      const error = new Error(`Gemini request failed: ${response.status}${detail ? ` - ${detail.slice(0, 300)}` : ""}`);
+      if (response.status === 400 || response.status === 401 || response.status === 403) continue;
+      throw error;
+    }
+    const payload = (await response.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>; modelVersion?: string; usageMetadata?: unknown };
+    const content = payload.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+    return { content: content || "تعذر قراءة رد Gemini.", model: payload.modelVersion ?? modelId, usage: payload.usageMetadata ?? null };
   }
-  const payload = (await response.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>; modelVersion?: string; usageMetadata?: unknown };
-  const content = payload.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
-  return { content: content || "تعذر قراءة رد Gemini.", model: payload.modelVersion ?? modelId, usage: payload.usageMetadata ?? null };
+  throw new Error("Gemini rejected all configured API keys (401/403).");
 }
 
 async function completeWithGroq(model: string, messages: SimpleMessage[]) {
@@ -564,22 +569,25 @@ export const appRouter = router({
     }),
 
     gemini: publicProcedure.query(async () => {
-      const apiKey = getProviderKey("gemini", process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY);
-      if (!apiKey) return { available: false as const, models: [] as Array<{ id: string; name: string; supportsVision: boolean; contextLength?: number }> };
-      try {
-        const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000", { headers: { "x-goog-api-key": apiKey }, signal: AbortSignal.timeout(15_000) });
-        if (!response.ok) return { available: false as const, models: [] };
-        const payload = (await response.json()) as { models?: Array<{ name: string; displayName?: string; supportedGenerationMethods?: string[]; inputTokenLimit?: number; outputTokenLimit?: number }> };
-        return {
-          available: true as const,
-          models: (payload.models ?? []).filter((m) => m.supportedGenerationMethods?.includes("generateContent")).map((m) => ({
+      const apiKeys = getProviderKeyCandidates("gemini", process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY);
+      if (!apiKeys.length) return { available: false as const, models: [] as Array<{ id: string; name: string; supportsVision: boolean; contextLength?: number }> };
+      let lastStatus: number | undefined;
+      for (const apiKey of apiKeys) {
+        try {
+          const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000", { headers: { "x-goog-api-key": apiKey }, signal: AbortSignal.timeout(15_000) });
+          if (!response.ok) { lastStatus = response.status; continue; }
+          const payload = (await response.json()) as { models?: Array<{ name: string; displayName?: string; supportedGenerationMethods?: string[]; inputTokenLimit?: number; outputTokenLimit?: number }> };
+          const models = (payload.models ?? []).filter((m) => m.supportedGenerationMethods?.includes("generateContent")).map((m) => ({
             id: m.name.replace(/^models\//, ""),
             name: m.displayName ?? m.name.replace(/^models\//, ""),
             supportsVision: /vision|gemini/i.test(`${m.name} ${m.displayName ?? ""}`),
             contextLength: m.inputTokenLimit,
-          })),
-        };
-      } catch { return { available: false as const, models: [] }; }
+          }));
+          return { available: models.length > 0, models };
+        } catch { /* Try the next key; do not log or expose credential material. */ }
+      }
+      console.warn(`[provider] Gemini model catalog unavailable${lastStatus ? ` (HTTP ${lastStatus})` : " (network error)"}`);
+      return { available: false as const, models: [] };
     }),
     groq: publicProcedure.query(async () => {
       const apiKey = process.env.GROQ_API_KEY;

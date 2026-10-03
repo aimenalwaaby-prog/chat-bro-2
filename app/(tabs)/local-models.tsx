@@ -17,6 +17,7 @@ export default function LocalModelsScreen() {
   const [progress, setProgress] = useState<Record<string, number>>({});
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const device = getDeviceProfile();
+  const deviceTierLabel = device.tier === "low" ? "اقتصادي" : device.tier === "balanced" ? "متوسط" : "قوي";
   const isAndroid = Platform.OS === "android";
   const refresh = () => listInstalledLocalModels().then(setInstalled);
   useEffect(() => { void refresh(); void loadModelPreferences().then((saved) => setFavoriteIds(new Set(saved.favorites.map((item) => item.id)))); }, []);
@@ -61,8 +62,8 @@ export default function LocalModelsScreen() {
     <Text className="mt-2 text-[12px] leading-5 text-muted text-right">هذه ملفات GGUF حقيقية من Hugging Face، ويُتحقق من HTTP والحجم ورأس النموذج قبل تسجيلها كمثبتة. تعمل عبر llama.cpp بعد تنزيلها، ولا تحتاج إلى Ollama أو OpenRouter أو اتصال بالخادم.</Text>
     {!isAndroid ? <View className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-3"><Text className="text-right text-[11px] font-semibold text-amber-900">التنزيل والتشغيل متاحان في APK Android فقط.</Text></View> : null}
     <View className="mt-4 rounded-[18px] border bg-surface p-3" style={{ borderColor: colors.border }}>
-      <View className="flex-row-reverse items-center justify-between"><StatusBadge label={`${installed.length} مثبت`} tone="full" /><Text className="text-[10px] text-muted">RAM ≈ {device.totalMemoryGb.toFixed(1)}GB · {device.modelName}</Text></View>
-      <Text className="mt-2 text-[10px] text-muted text-right">المناسب لجهازك يظهر كمناسب، والأثقل يحتاج موافقة صريحة قبل التنزيل.</Text>
+      <View className="flex-row-reverse items-center justify-between"><StatusBadge label={`${installed.length} مثبت`} tone="full" /><Text className="text-[10px] text-muted">{device.memoryKnown ? `RAM ≈ ${device.totalMemoryGb.toFixed(1)}GB` : "RAM غير معروفة · وضع آمن"} · {deviceTierLabel} · {device.modelName}</Text></View>
+      <Text className="mt-2 text-[10px] text-muted text-right">يُضبط السياق واستهلاك الذاكرة تلقائيًا. النماذج التي قد تضغط جهازك تُمنع، والأثقل الآمن يحتاج موافقة قبل التنزيل.</Text>
     </View>
     {installed.length > 0 ? <Pressable onPress={() => router.push("/(tabs)/local-chat")} className="mt-3 flex-row-reverse items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-3"><MaterialIcons name="chat" size={18} color="#062034" /><Text className="font-bold text-[#062034]">فتح المحادثة المحلية</Text></Pressable> : null}
     <FlatList

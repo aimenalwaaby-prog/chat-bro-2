@@ -16,12 +16,11 @@ async function openLink(url: string) {
   }
 }
 
-const androidApkUrl = process.env.EXPO_PUBLIC_ANDROID_APK_URL ?? "/downloads/chatbro-latest.apk";
-
 export default function AboutScreen() {
   const colors = useColors();
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
+  const androidApkUrl = process.env.EXPO_PUBLIC_ANDROID_APK_URL ?? "https://chatbro-web.onrender.com/downloads/chatbro-latest.apk";
   return (
     <ScreenContainer className="px-5 pt-4">
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
@@ -35,7 +34,7 @@ export default function AboutScreen() {
 
         <Pressable onPress={() => void openLink(androidApkUrl)} className="mt-4 flex-row-reverse items-center rounded-2xl border bg-surface px-4 py-4" style={{ borderColor: colors.border }}>
           <MaterialIcons name="download" size={22} color={colors.primary} />
-          <View className="mr-3 flex-1"><Text className="text-right text-[12px] font-extrabold text-foreground">تحميل تطبيق Android</Text><Text className="mt-1 text-right text-[10px] text-muted">تنزيل APK من الموقع</Text></View>
+          <View className="mr-3 flex-1"><Text className="text-right text-[12px] font-extrabold text-foreground">تحميل تطبيق Android</Text><Text className="mt-1 text-right text-[10px] text-muted">نسخة ARM64 · تتطلب Android 64-bit</Text></View>
           <MaterialIcons name="open-in-new" size={17} color={colors.muted} />
         </Pressable>
 

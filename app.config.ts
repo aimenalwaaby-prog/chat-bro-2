@@ -41,7 +41,7 @@ const env = {
 const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
-  version: "1.0.1",
+  version: "1.0.2",
   orientation: "portrait",
   icon: "./assets/images/chatbro-logo-small.png",
   scheme: env.scheme,
@@ -55,7 +55,7 @@ const config: ExpoConfig = {
       }
   },
   android: {
-    versionCode: 2,
+    versionCode: 3,
     adaptiveIcon: {
       backgroundColor: "#06131F",
       foregroundImage: "./assets/images/android-icon-foreground.png",
@@ -119,7 +119,7 @@ const config: ExpoConfig = {
       "expo-build-properties",
       {
         android: {
-            // Keep the release focused on current 64-bit Android phones; 32-bit-only devices are not included.
+            // llama.rn ships its Android native runtime for 64-bit ARM only.
             buildArchs: ["arm64-v8a"],
           minSdkVersion: 24,
         },

@@ -1,16 +1,17 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Alert, AppState, FlatList, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { BrandHeader, StatusBadge } from "@/components/chatbro-ui";
 import { useColors } from "@/hooks/use-colors";
 import { recordModelUse } from "@/lib/model-preferences";
-import { completeLocal, getDeviceProfile, listInstalledLocalModels, type InstalledLocalModel } from "@/lib/local-runtime";
+import { completeLocal, getDeviceProfile, listInstalledLocalModels, releaseLocalContexts, type InstalledLocalModel } from "@/lib/local-runtime";
 
 type Message = { id: string; role: "user" | "assistant"; text: string };
 const key = (id: string) => `chatbro:local-conversation:${encodeURIComponent(id)}`;
+const MAX_PERSISTED_MESSAGES = 48;
 
 export default function LocalChatScreen() {
   const colors = useColors();
@@ -20,6 +21,8 @@ export default function LocalChatScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  const releaseAfterInferenceRef = useRef(false);
   const device = useMemo(() => getDeviceProfile(), []);
 
   const refresh = useCallback(async () => {
@@ -30,35 +33,56 @@ export default function LocalChatScreen() {
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
     if (!selected) return;
-    AsyncStorage.getItem(key(selected.id)).then((raw) => setMessages(raw ? JSON.parse(raw) : [{ id: "welcome", role: "assistant", text: `هذه محادثة محلية مستقلة مع ${selected.name}. لا تُرسل رسائلك إلى OpenRouter أو Render.` }]));
+    AsyncStorage.getItem(key(selected.id)).then((raw) => {
+      const saved = raw ? JSON.parse(raw) : [{ id: "welcome", role: "assistant", text: `هذه محادثة محلية مستقلة مع ${selected.name}. لا تُرسل رسائلك إلى OpenRouter أو Render.` }];
+      setMessages(Array.isArray(saved) ? saved.slice(-MAX_PERSISTED_MESSAGES) : []);
+    });
   }, [selected]);
-  useEffect(() => { if (selected && messages.length) void AsyncStorage.setItem(key(selected.id), JSON.stringify(messages)); }, [messages, selected]);
+  useEffect(() => { if (selected && messages.length) void AsyncStorage.setItem(key(selected.id), JSON.stringify(messages.slice(-MAX_PERSISTED_MESSAGES))); }, [messages, selected]);
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state !== "active" && !busyRef.current) void releaseLocalContexts();
+    });
+    return () => {
+      subscription.remove();
+      if (busyRef.current) releaseAfterInferenceRef.current = true;
+      else void releaseLocalContexts();
+    };
+  }, []);
 
   const send = async () => {
     const text = input.trim();
     if (!text || !selected || busy) return;
     void recordModelUse({ id: `local:${selected.id}`, name: selected.name, provider: "محلي على الجهاز", route: "local" }).catch(() => undefined);
     setInput("");
-    const next = [...messages, { id: `${Date.now()}`, role: "user" as const, text }];
+    const next = [...messages, { id: `${Date.now()}`, role: "user" as const, text }].slice(-MAX_PERSISTED_MESSAGES);
     setMessages(next);
+    busyRef.current = true;
     setBusy(true);
     try {
       const reply = await completeLocal(selected, [
         { role: "system", content: "أنت مساعد محلي داخل Chat Bro. لا تدّعي الوصول إلى الإنترنت أو المعلومات الحديثة. إذا احتاج السؤال معلومات بعد معرفتك التدريبية، صرّح بذلك بوضوح." },
         ...next.map((m) => ({ role: m.role, content: m.text })),
       ]);
-      setMessages((current) => [...current, { id: `${Date.now()}-reply`, role: "assistant", text: reply || "لم يُنتج النموذج ردًا." }]);
+      setMessages((current) => [...current, { id: `${Date.now()}-reply`, role: "assistant" as const, text: reply || "لم يُنتج النموذج ردًا." }].slice(-MAX_PERSISTED_MESSAGES));
     } catch (error) {
       Alert.alert("تعذر تشغيل النموذج", error instanceof Error ? error.message : "فشل تشغيل النموذج محليًا.");
-    } finally { setBusy(false); }
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+      if (releaseAfterInferenceRef.current || AppState.currentState !== "active") {
+        releaseAfterInferenceRef.current = false;
+        void releaseLocalContexts();
+      }
+    }
   };
 
   return <ScreenContainer className="px-5 pt-4" edges={["top", "left", "right"]}>
     <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 24} className="flex-1">
       <BrandHeader title="المحادثة المحلية" eyebrow="ON-DEVICE AI" onPress={() => router.push("/(tabs)/local-models")} />
-      <View className="mt-3 rounded-2xl border bg-surface p-3" style={{ borderColor: colors.border }}>
-        <View className="flex-row-reverse items-center justify-between"><StatusBadge label="محلي 100%" tone="full" /><Text className="text-[10px] text-muted">RAM ≈ {device.totalMemoryGb.toFixed(1)}GB</Text></View>
-        <Text className="mt-2 text-[10px] text-muted text-right">المعالجة تتم على الهاتف عبر llama.cpp، ولا تمر الرسائل عبر الخادم.</Text>
+        <View className="mt-3 rounded-2xl border bg-surface p-3" style={{ borderColor: colors.border }}>
+        <View className="flex-row-reverse items-center justify-between"><StatusBadge label="محلي 100%" tone="full" /><Text className="text-[10px] text-muted">{device.memoryKnown ? `RAM ≈ ${device.totalMemoryGb.toFixed(1)}GB` : "RAM غير معروفة · وضع آمن"} · {device.tier === "low" ? "اقتصادي" : device.tier === "balanced" ? "متوسط" : "قوي"}</Text></View>
+        <Text className="mt-2 text-[10px] text-muted text-right">المعالجة تتم على الهاتف. السياق والدفعات تتكيف مع الذاكرة، ويُحرر النموذج عند انتقال التطبيق للخلفية.</Text>
       </View>
       <View className="mt-3 flex-row-reverse gap-2">
         {models.map((m) => <Pressable key={m.id} onPress={() => setSelected(m)} className="rounded-full border px-3 py-2" style={{ borderColor: m.id === selected?.id ? colors.primary : colors.border, backgroundColor: m.id === selected?.id ? colors.primary : colors.surface }}><Text className="text-[10px] font-bold text-foreground">{m.name}</Text></Pressable>)}
