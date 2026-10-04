@@ -74,6 +74,31 @@ function increment(key: string, limit: number, duration: number) {
   return { allowed: true, retryAfterMs: 0 };
 }
 
+function assertWindowAvailable(key: string, limit: number, duration: number) {
+  const current = counters.get(`${key}:${duration}`);
+  if (!current || current.resetAt <= Date.now() || current.count < limit) return;
+  throw new TRPCError({
+    code: "TOO_MANY_REQUESTS",
+    message: `انتهت حصة الاستخدام الحالية لهذه الميزة. حاول بعد ${Math.max(1, Math.ceil((current.resetAt - Date.now()) / 60_000))} دقيقة.`,
+  });
+}
+
+/** Check provider-backed usage without consuming quota. */
+export function assertUsageAvailable(input: { req: Request; user: User | null; kind: UsageKind }) {
+  const policy = parsePolicy();
+  const identity = getClientKey(input.req, input.user?.id);
+  const checks: Array<[string, LimitConfig]> = [
+    [`user:${identity}:${input.kind}`, policy[input.kind]],
+    [`user:${identity}:global`, policy.global],
+  ];
+  for (const [key, limits] of checks) {
+    for (const window of Object.keys(windowMs) as WindowName[]) {
+      const limit = limits[window];
+      if (limit && limit > 0) assertWindowAvailable(`${key}:${window}`, limit, windowMs[window]);
+    }
+  }
+}
+
 export function enforceUsage(input: { req: Request; user: User | null; kind: UsageKind; model?: string | null }) {
   const policy = parsePolicy();
   const identity = getClientKey(input.req, input.user?.id);

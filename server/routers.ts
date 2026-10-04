@@ -11,20 +11,27 @@ import { transcribeAudio } from "./_core/voiceTranscription";
 import * as db from "./db";
 import { z } from "zod";
 import { getProviderKey, getProviderKeyCandidates } from "./_core/provider-pool";
-import { enforceUsage, getSubscriptionConfig, getUsagePolicy } from "./_core/usage-policy";
+import { assertUsageAvailable, enforceUsage, getSubscriptionConfig, getUsagePolicy } from "./_core/usage-policy";
 
 async function generateImageViaMediaService(input: Parameters<typeof generateImage>[0]) {
   const baseUrl = process.env.IMAGE_SERVICE_URL?.replace(/\/$/, "");
   const token = process.env.IMAGE_SERVICE_TOKEN;
   if (!baseUrl || !token) return generateImage(input);
-  const response = await fetch(`${baseUrl}/internal/images/generate`, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-    body: JSON.stringify(input),
-    signal: AbortSignal.timeout(150_000),
-  });
-  if (!response.ok) throw new Error(`خدمة الصور الثانوية لم تستجب (${response.status}).`);
-  return (await response.json()) as Awaited<ReturnType<typeof generateImage>>;
+  const hasDirectProvider = Boolean(process.env.OPENROUTER_API_KEY || (process.env.BUILT_IN_FORGE_API_KEY && process.env.BUILT_IN_FORGE_API_URL) || process.env.POLLINATIONS_API_KEY || process.env.REPLICATE_API_TOKEN || process.env.FAL_KEY);
+  try {
+    const response = await fetch(`${baseUrl}/internal/images/generate`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(input),
+      signal: AbortSignal.timeout(150_000),
+    });
+    if (response.ok) return (await response.json()) as Awaited<ReturnType<typeof generateImage>>;
+    const detail = await response.text().catch(() => "");
+    if (!hasDirectProvider || ![502, 503, 504].includes(response.status)) throw new Error(`خدمة الصور الثانوية لم تستجب (${response.status})${detail ? `: ${detail.slice(0, 240)}` : ""}.`);
+  } catch (error) {
+    if (!hasDirectProvider) throw error;
+  }
+  return generateImage(input);
 }
 
 type SimpleMessage = { role: string; content: unknown };
@@ -32,7 +39,7 @@ const publicApiBase = () => (process.env.PUBLIC_API_BASE_URL ?? "https://chatbro
 const errorForClient = (error: unknown) => {
   const text = error instanceof Error ? error.message : "تعذر تنفيذ الطلب";
   if (/key|configured|authentication/i.test(text)) return "مزود الذكاء الاصطناعي يحتاج إعداد مفتاح على الخادم.";
-  if (/quota|rate|429|limit/i.test(text)) return "تم الوصول إلى حد الاستخدام أو معدل الطلبات لهذا المزود.";
+  if (/quota|rate|429|limit|credit|balance|insufficient funds|exhausted/i.test(text)) return "انتهى رصيد أو حصة مزود الصور الخارجي. تحقّق من رصيد مفتاح المزود أو اختر مزودًا آخر؛ هذه ليست حصة التطبيق.";
   if (/timeout|abort|timed out/i.test(text)) return "انتهت مهلة المزود. حاول مرة أخرى.";
   return text.length < 180 ? text : "تعذر تنفيذ الطلب على الخادم.";
 };
@@ -509,9 +516,10 @@ export const appRouter = router({
       }
     }),
     generate: publicProcedure.input(z.object({ prompt: z.string().min(3).max(4000), model: z.string().max(120).optional(), quality: z.enum(["medium", "high"]).optional() })).mutation(async ({ input, ctx }) => {
-      enforceUsage({ req: ctx.req, user: ctx.user, kind: "image", model: input.model });
+      assertUsageAvailable({ req: ctx.req, user: ctx.user, kind: "image" });
       try {
         const result = await (process.env.IMAGE_SERVICE_URL && process.env.SERVICE_ROLE !== "media" ? generateImageViaMediaService(input) : generateImage(input));
+        enforceUsage({ req: ctx.req, user: ctx.user, kind: "image", model: input.model });
         if (ctx.user) await db.recordUsage({ userId: ctx.user.id, model: input.model, provider: input.model?.split(":")[0] ?? "image", requestKind: "image" });
         return result;
       } catch (error) { if (ctx.user) await db.recordUsage({ userId: ctx.user.id, model: input.model, provider: input.model?.split(":")[0] ?? "image", requestKind: "image", outcome: "error", errorCode: error instanceof Error ? error.name : "UNKNOWN" }).catch(() => undefined); throw new TRPCError({ code: "BAD_GATEWAY", message: errorForClient(error) }); }
