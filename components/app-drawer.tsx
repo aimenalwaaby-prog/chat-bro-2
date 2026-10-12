@@ -131,6 +131,7 @@ export function AppDrawerShell({ children }: { children: ReactNode }) {
               <DrawerLink icon="chat" label="محادثة جديدة" onPress={() => navigate("/(tabs)/chat")} colors={colors} />
               <DrawerLink icon="widgets" label="النماذج وتصنيفاتها" onPress={() => navigate("/(tabs)/models")} colors={colors} />
               <DrawerLink icon="source" label="مستودعات نماذج AI" onPress={() => navigate("/(tabs)/model-repositories")} colors={colors} />
+              <DrawerLink icon="inventory-2" label="مكتبة النماذج" onPress={() => navigate("/(tabs)/model-library")} colors={colors} />
               <DrawerLink icon="vpn-key" label="مفاتيح المزودات الخاصة" onPress={() => navigate("/(tabs)/provider-keys")} colors={colors} />
               <DrawerLink icon="image" label="إنشاء الصور" onPress={() => navigate("/(tabs)/images")} colors={colors} />
               {imageModels.data?.models?.slice(0, 8).map((model) => {

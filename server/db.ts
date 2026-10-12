@@ -1,9 +1,11 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, modelSources, providerKeys, subscriptions, users } from "../drizzle/schema";
+import { InsertUser, modelLibrary, modelSources, providerKeys, subscriptions, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let modelLibrarySchemaReady: Promise<void> | null = null;
+let modelSourcesSchemaReady: Promise<void> | null = null;
 
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
@@ -16,6 +18,69 @@ export async function getDb() {
     }
   }
   return _db;
+}
+
+async function getModelSourcesDb() {
+  const db = await getDb();
+  if (!db) return undefined;
+  if (!modelSourcesSchemaReady) {
+    modelSourcesSchemaReady = db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS model_sources (
+      id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      userId INT NOT NULL,
+      source VARCHAR(32) NOT NULL,
+      reference VARCHAR(240) NOT NULL,
+      url VARCHAR(512) NOT NULL,
+      label VARCHAR(255) NOT NULL,
+      status ENUM('added','syncing','synced','installing','installed','failed') NOT NULL DEFAULT 'added',
+      metadataJson TEXT NULL,
+      installMode VARCHAR(32) NULL,
+      lastSyncedAt TIMESTAMP NULL,
+      installedAt TIMESTAMP NULL,
+      lastError TEXT NULL,
+      createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY model_sources_user_ref_unique (userId, source, reference),
+      KEY model_sources_user_idx (userId),
+      KEY model_sources_status_idx (status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)).then(() => undefined).catch((error) => {
+      modelSourcesSchemaReady = null;
+      throw error;
+    });
+  }
+  await modelSourcesSchemaReady;
+  return db;
+}
+
+async function getModelLibraryDb() {
+  const db = await getDb();
+  if (!db) return undefined;
+  if (!modelLibrarySchemaReady) {
+    modelLibrarySchemaReady = db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS model_library (
+      id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      userId INT NOT NULL,
+      source VARCHAR(32) NOT NULL,
+      modelId VARCHAR(255) NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      url VARCHAR(512) NOT NULL,
+      description TEXT NULL,
+      task VARCHAR(96) NULL,
+      license VARCHAR(120) NULL,
+      downloads BIGINT NULL,
+      likes INT NULL,
+      sourceId BIGINT NULL,
+      status ENUM('saved','downloading','downloaded','installed','failed') NOT NULL DEFAULT 'saved',
+      metadataJson TEXT NULL,
+      createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY model_library_user_source_model_unique (userId, source, modelId),
+      KEY model_library_user_updated (userId, updatedAt)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)).then(() => undefined).catch((error) => {
+      modelLibrarySchemaReady = null;
+      throw error;
+    });
+  }
+  await modelLibrarySchemaReady;
+  return db;
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {
@@ -231,36 +296,71 @@ export async function createAttachment(input: { userId: number; conversationId?:
 }
 
 export async function listUserModelSources(userId: number) {
-  const db = await getDb();
-  if (!db) return [];
+  const db = await getModelSourcesDb();
+  if (!db) throw new Error("DATABASE_URL غير مهيأ على خادم Chat Bro؛ لا يمكن تحميل مستودعاتك.");
   return db.select().from(modelSources).where(eq(modelSources.userId, userId)).orderBy(desc(modelSources.updatedAt));
 }
 
 export async function addModelSource(input: { userId: number; source: string; reference: string; url: string; label: string; installMode?: string | null }) {
-  const db = await getDb();
-  if (!db) return undefined;
+  const db = await getModelSourcesDb();
+  if (!db) throw new Error("DATABASE_URL غير مهيأ على خادم Chat Bro؛ لم يُحفظ المستودع.");
   await db.insert(modelSources).values(input).onDuplicateKeyUpdate({ set: { url: input.url, label: input.label, installMode: input.installMode ?? null, updatedAt: new Date() } });
   const rows = await db.select().from(modelSources).where(and(eq(modelSources.userId, input.userId), eq(modelSources.source, input.source), eq(modelSources.reference, input.reference))).limit(1);
   return rows[0];
 }
 
 export async function getUserModelSource(userId: number, id: number) {
-  const db = await getDb();
-  if (!db) return undefined;
+  const db = await getModelSourcesDb();
+  if (!db) throw new Error("DATABASE_URL غير مهيأ على خادم Chat Bro؛ لا يمكن فتح المستودع.");
   const rows = await db.select().from(modelSources).where(and(eq(modelSources.userId, userId), eq(modelSources.id, id))).limit(1);
   return rows[0];
 }
 
 export async function updateModelSource(id: number, userId: number, patch: Partial<{ status: "added" | "syncing" | "synced" | "installing" | "installed" | "failed"; metadataJson: string | null; lastSyncedAt: Date | null; installedAt: Date | null; lastError: string | null; installMode: string | null }>) {
-  const db = await getDb();
-  if (!db) return undefined;
+  const db = await getModelSourcesDb();
+  if (!db) throw new Error("DATABASE_URL غير مهيأ على خادم Chat Bro؛ لم يُحدّث المستودع.");
   await db.update(modelSources).set({ ...patch, updatedAt: new Date() }).where(and(eq(modelSources.id, id), eq(modelSources.userId, userId)));
   return getUserModelSource(userId, id);
 }
 
 export async function deleteModelSource(userId: number, id: number) {
-  const db = await getDb();
-  if (!db) return false;
+  const db = await getModelSourcesDb();
+  if (!db) throw new Error("DATABASE_URL غير مهيأ على خادم Chat Bro؛ لم يُحذف المستودع.");
   const result = await db.delete(modelSources).where(and(eq(modelSources.userId, userId), eq(modelSources.id, id)));
+  return Number(result[0].affectedRows ?? 0) > 0;
+}
+
+export async function listUserModelLibrary(userId: number) {
+  const db = await getModelLibraryDb();
+  if (!db) throw new Error("DATABASE_URL غير مهيأ على خادم Chat Bro؛ لا يمكن تحميل مكتبة النماذج.");
+  return db.select().from(modelLibrary).where(eq(modelLibrary.userId, userId)).orderBy(desc(modelLibrary.updatedAt));
+}
+
+export async function saveUserModelToLibrary(input: {
+  userId: number;
+  source: string;
+  modelId: string;
+  name: string;
+  url: string;
+  description?: string | null;
+  task?: string | null;
+  license?: string | null;
+  downloads?: number | null;
+  likes?: number | null;
+  sourceId?: number | null;
+  metadataJson?: string | null;
+}) {
+  const db = await getModelLibraryDb();
+  if (!db) throw new Error("DATABASE_URL غير مهيأ على خادم Chat Bro؛ لم يُحفظ النموذج.");
+  await db.insert(modelLibrary).values({ ...input, description: input.description ?? null, task: input.task ?? null, license: input.license ?? null, downloads: input.downloads ?? null, likes: input.likes ?? null, sourceId: input.sourceId ?? null, metadataJson: input.metadataJson ?? null })
+    .onDuplicateKeyUpdate({ set: { name: input.name, url: input.url, description: input.description ?? null, task: input.task ?? null, license: input.license ?? null, downloads: input.downloads ?? null, likes: input.likes ?? null, sourceId: input.sourceId ?? null, metadataJson: input.metadataJson ?? null, updatedAt: new Date() } });
+  const rows = await db.select().from(modelLibrary).where(and(eq(modelLibrary.userId, input.userId), eq(modelLibrary.source, input.source), eq(modelLibrary.modelId, input.modelId))).limit(1);
+  return rows[0];
+}
+
+export async function deleteUserModelFromLibrary(userId: number, id: number) {
+  const db = await getModelLibraryDb();
+  if (!db) throw new Error("DATABASE_URL غير مهيأ على خادم Chat Bro؛ لم يُحذف النموذج.");
+  const result = await db.delete(modelLibrary).where(and(eq(modelLibrary.userId, userId), eq(modelLibrary.id, id)));
   return Number(result[0].affectedRows ?? 0) > 0;
 }

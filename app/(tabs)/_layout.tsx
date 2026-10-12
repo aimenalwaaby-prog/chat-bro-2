@@ -70,6 +70,7 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen name="model-library" options={{ href: null }} />
       <Tabs.Screen
         name="local-chat"
         options={{

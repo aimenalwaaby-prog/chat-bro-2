@@ -5,6 +5,8 @@ import { normalizeModelSource, type ModelSourceKind, type NormalizedModelSource 
 const MAX_INSPECT_BYTES = 64 * 1024 * 1024;
 const MAX_ARCHIVE_ENTRIES = 2_000;
 const MAX_METADATA_CHARS = 120_000;
+const JSON_CACHE_TTL_MS = 60_000;
+const jsonCache = new Map<string, { expiresAt: number; value: unknown }>();
 
 type RepoFile = { path: string; size?: number; downloadUrl?: string; type?: string };
 export type RepositoryInspection = {
@@ -30,11 +32,27 @@ function authHeaders(source: ModelSourceKind): Record<string, string> {
   return {};
 }
 async function fetchJson(url: string, source: ModelSourceKind) {
+  const cacheKey = `${source}:${url}`;
+  const cached = jsonCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value as Record<string, unknown> | unknown[];
+  if (cached) jsonCache.delete(cacheKey);
   const headers: Record<string, string> = { accept: "application/json", ...authHeaders(source) };
   const response = await fetch(url, { headers, redirect: "error", signal: AbortSignal.timeout(30_000) });
   const text = await response.text();
-  if (!response.ok) throw new Error(`تعذر قراءة المصدر (${response.status}): ${trimText(text)}`);
-  try { return JSON.parse(text) as Record<string, unknown> | unknown[]; } catch { throw new Error("استجابة المصدر ليست JSON صالحًا."); }
+  if (!response.ok) {
+    const githubRateLimited = source === "github" && (response.status === 403 || response.status === 429) &&
+      (/rate limit/i.test(text) || response.headers.get("x-ratelimit-remaining") === "0");
+    if (githubRateLimited) {
+      throw new Error("تم تجاوز حد GitHub API لهذا الخادم. أعد المحاولة لاحقًا أو اضبط GITHUB_TOKEN صالحًا في أسرار خادم Chat Bro لرفع الحد.");
+    }
+    throw new Error(`تعذر قراءة المصدر (${response.status}): ${trimText(text)}`);
+  }
+  try {
+    const value = JSON.parse(text) as Record<string, unknown> | unknown[];
+    if (jsonCache.size >= 256) jsonCache.delete(jsonCache.keys().next().value!);
+    jsonCache.set(cacheKey, { expiresAt: Date.now() + JSON_CACHE_TTL_MS, value });
+    return value;
+  } catch { throw new Error("استجابة المصدر ليست JSON صالحًا."); }
 }
 function fileKind(path: string) {
   const lower = path.toLowerCase();
