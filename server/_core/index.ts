@@ -78,7 +78,7 @@ async function startServer() {
   });
 
   registerStorageProxy(app);
-  registerOAuthRoutes(app);
+  if (process.env.SERVICE_ROLE !== "media") registerOAuthRoutes(app);
 
   const health = (_req: express.Request, res: express.Response) => {
     res.status(200).json({
@@ -106,6 +106,7 @@ async function startServer() {
         comfyui: Boolean(process.env.COMFYUI_BASE_URL),
         imageService: Boolean(process.env.IMAGE_SERVICE_URL),
         imageStorage: Boolean(ENV.forgeApiUrl && ENV.forgeApiKey),
+        githubApi: Boolean(process.env.GITHUB_TOKEN),
       },
     });
   };
