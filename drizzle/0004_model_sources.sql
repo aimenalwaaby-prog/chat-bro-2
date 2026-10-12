@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS `model_sources` (
+  `id` bigint AUTO_INCREMENT NOT NULL,
+  `userId` int NOT NULL,
+  `source` varchar(32) NOT NULL,
+  `reference` varchar(240) NOT NULL,
+  `url` varchar(512) NOT NULL,
+  `label` varchar(255) NOT NULL,
+  `status` enum('added','syncing','synced','installing','installed','failed') NOT NULL DEFAULT 'added',
+  `metadataJson` text,
+  `installMode` varchar(32),
+  `lastSyncedAt` timestamp NULL,
+  `installedAt` timestamp NULL,
+  `lastError` text,
+  `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updatedAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `model_sources_user_idx` (`userId`),
+  INDEX `model_sources_status_idx` (`status`),
+  UNIQUE KEY `model_sources_user_ref_unique` (`userId`, `source`, `reference`)
+);

@@ -8,6 +8,10 @@ export function registerStorageProxy(app: Express) {
       res.status(400).send("Missing storage key");
       return;
     }
+    if (key.includes("..") || key.startsWith("/") || !/^(uploads|generated)\/[A-Za-z0-9._/-]{1,500}$/.test(key)) {
+      res.status(400).send("Invalid storage key");
+      return;
+    }
 
     if (!ENV.forgeApiUrl || !ENV.forgeApiKey) {
       res.status(500).send("Storage proxy not configured");

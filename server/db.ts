@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, subscriptions, users } from "../drizzle/schema";
+import { InsertUser, modelSources, providerKeys, subscriptions, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -101,6 +101,53 @@ export async function createConversation(userId: number, title = "محادثة �
   return rows[0];
 }
 
+export async function listUserProviderKeys(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: providerKeys.id,
+    userId: providerKeys.userId,
+    name: providerKeys.name,
+    kind: providerKeys.kind,
+    provider: providerKeys.provider,
+    baseUrl: providerKeys.baseUrl,
+    modelPrefix: providerKeys.modelPrefix,
+    createdAt: providerKeys.createdAt,
+    updatedAt: providerKeys.updatedAt,
+  }).from(providerKeys).where(eq(providerKeys.userId, userId)).orderBy(desc(providerKeys.updatedAt));
+}
+
+export async function createUserProviderKey(input: {
+  userId: number;
+  name: string;
+  kind: "chat" | "image" | "both";
+  provider: string;
+  baseUrl: string;
+  encryptedApiKey: string;
+  modelPrefix?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.insert(providerKeys).values(input);
+  const id = Number(result[0].insertId);
+  const rows = await listUserProviderKeys(input.userId);
+  return rows.find((row) => row.id === id);
+}
+
+export async function getUserProviderKey(userId: number, id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(providerKeys).where(and(eq(providerKeys.userId, userId), eq(providerKeys.id, id))).limit(1);
+  return rows[0];
+}
+
+export async function deleteUserProviderKey(userId: number, id: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const result = await db.delete(providerKeys).where(and(eq(providerKeys.userId, userId), eq(providerKeys.id, id)));
+  return Number(result[0].affectedRows ?? 0) > 0;
+}
+
 export async function recordUsage(input: {
   userId: number;
   model?: string | null;
@@ -181,4 +228,39 @@ export async function createAttachment(input: { userId: number; conversationId?:
   const { attachments } = await import("../drizzle/schema");
   const result = await db.insert(attachments).values({ ...input, conversationId: input.conversationId ?? null, status: input.status ?? "ready", extractedText: input.extractedText ?? null });
   return Number(result[0].insertId);
+}
+
+export async function listUserModelSources(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(modelSources).where(eq(modelSources.userId, userId)).orderBy(desc(modelSources.updatedAt));
+}
+
+export async function addModelSource(input: { userId: number; source: string; reference: string; url: string; label: string; installMode?: string | null }) {
+  const db = await getDb();
+  if (!db) return undefined;
+  await db.insert(modelSources).values(input).onDuplicateKeyUpdate({ set: { url: input.url, label: input.label, installMode: input.installMode ?? null, updatedAt: new Date() } });
+  const rows = await db.select().from(modelSources).where(and(eq(modelSources.userId, input.userId), eq(modelSources.source, input.source), eq(modelSources.reference, input.reference))).limit(1);
+  return rows[0];
+}
+
+export async function getUserModelSource(userId: number, id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(modelSources).where(and(eq(modelSources.userId, userId), eq(modelSources.id, id))).limit(1);
+  return rows[0];
+}
+
+export async function updateModelSource(id: number, userId: number, patch: Partial<{ status: "added" | "syncing" | "synced" | "installing" | "installed" | "failed"; metadataJson: string | null; lastSyncedAt: Date | null; installedAt: Date | null; lastError: string | null; installMode: string | null }>) {
+  const db = await getDb();
+  if (!db) return undefined;
+  await db.update(modelSources).set({ ...patch, updatedAt: new Date() }).where(and(eq(modelSources.id, id), eq(modelSources.userId, userId)));
+  return getUserModelSource(userId, id);
+}
+
+export async function deleteModelSource(userId: number, id: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const result = await db.delete(modelSources).where(and(eq(modelSources.userId, userId), eq(modelSources.id, id)));
+  return Number(result[0].affectedRows ?? 0) > 0;
 }

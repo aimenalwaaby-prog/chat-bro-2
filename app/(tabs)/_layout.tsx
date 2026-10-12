@@ -110,6 +110,8 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen name="images" options={{ href: null }} />
+      <Tabs.Screen name="model-repositories" options={{ href: null }} />
+      <Tabs.Screen name="provider-keys" options={{ href: null }} />
       <Tabs.Screen name="about" options={{ href: null }} />
       <Tabs.Screen name="web-browser" options={{ href: null, tabBarStyle: { display: "none" } }} />
     </Tabs>

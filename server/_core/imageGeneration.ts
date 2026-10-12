@@ -24,6 +24,30 @@ export type GenerateImageResponse = {
   url?: string;
 };
 
+export type CustomImageProvider = {
+  baseUrl: string;
+  apiKey: string;
+  model?: string | null;
+};
+
+export async function generateImageWithCustomProvider(options: GenerateImageOptions, provider: CustomImageProvider): Promise<GenerateImageResponse> {
+  const baseUrl = provider.baseUrl.replace(/\/$/, "");
+  const response = await fetch(`${baseUrl}/images/generations`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${provider.apiKey}` },
+    body: JSON.stringify({ model: options.model ?? provider.model ?? "default", prompt: options.prompt, n: 1, response_format: "b64_json" }),
+    signal: AbortSignal.timeout(120_000),
+  });
+  if (!response.ok) throw new Error(`مزود الصور المخصص رفض الطلب (${response.status}).`);
+  const payload = await response.json() as { data?: Array<{ url?: string; b64_json?: string; mime_type?: string }> };
+  const image = payload.data?.[0];
+  if (image?.url) return { url: image.url };
+  if (!image?.b64_json) throw new Error("مزود الصور المخصص لم يُرجع صورة.");
+  const stored = await storagePut(`generated/${Date.now()}.png`, Buffer.from(image.b64_json, "base64"), image.mime_type ?? "image/png");
+  const publicBase = (process.env.PUBLIC_API_BASE_URL ?? "https://chatbro-api.onrender.com").replace(/\/$/, "");
+  return { url: `${publicBase}${stored.url}` };
+}
+
 export async function generateImage(options: GenerateImageOptions): Promise<GenerateImageResponse> {
   const replicateModel = options.model?.startsWith("replicate:") ? options.model.slice("replicate:".length) : undefined;
   if (replicateModel) {
@@ -109,7 +133,7 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
     if (!openRouterApiKey) {
       throw new Error("Image generation requires a configured Forge image service or OPENROUTER_API_KEY.");
     }
-    const selectedModel = selectedOpenRouterModel ?? process.env.OPENROUTER_IMAGE_MODEL ?? "openai/gpt-5-image";
+    const selectedModel = selectedOpenRouterModel ?? process.env.OPENROUTER_IMAGE_MODEL ?? "openai/gpt-image-1";
     const response = await fetch("https://openrouter.ai/api/v1/images", {
       method: "POST",
       headers: {
@@ -122,7 +146,7 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
       body: JSON.stringify({
         model: selectedModel,
         prompt: options.prompt,
-        ...(options.originalImages?.length ? { input_references: options.originalImages.map((item) => item.url ?? (item.b64Json ? `data:${item.mimeType ?? "image/png"};base64,${item.b64Json}` : "")).filter(Boolean) } : {}),
+        ...(options.originalImages?.length ? { input_references: options.originalImages.map((item) => ({ type: "image_url", image_url: { url: item.url ?? (item.b64Json ? `data:${item.mimeType ?? "image/png"};base64,${item.b64Json}` : "") } })).filter((item) => item.image_url.url) } : {}),
         ...(options.quality ? { quality: options.quality } : {}),
       }),
       signal: AbortSignal.timeout(120_000),

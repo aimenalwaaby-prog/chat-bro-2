@@ -31,13 +31,15 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 
 async function startServer() {
   const app = express();
+  app.set("trust proxy", 1);
   const server = createServer(app);
   const requestCounts = new Map<string, { count: number; resetAt: number }>();
 
   // Enable CORS for all routes - reflect the request origin to support credentials
   app.use((req, res, next) => {
     const origin = req.headers.origin;
-    if (origin && (ENV.allowedOrigins.length === 0 || ENV.allowedOrigins.includes(origin))) {
+    const allowAnyInDevelopment = process.env.NODE_ENV !== "production" && ENV.allowedOrigins.length === 0;
+    if (origin && (allowAnyInDevelopment || ENV.allowedOrigins.includes(origin))) {
       res.header("Access-Control-Allow-Origin", origin);
       res.header("Vary", "Origin");
     }
@@ -49,6 +51,10 @@ async function startServer() {
     res.header("Access-Control-Allow-Credentials", "true");
 
     // Handle preflight requests
+    if (req.method === "OPTIONS" && origin && !allowAnyInDevelopment && !ENV.allowedOrigins.includes(origin)) {
+      res.sendStatus(403);
+      return;
+    }
     if (req.method === "OPTIONS") {
       res.sendStatus(200);
       return;

@@ -79,6 +79,17 @@ export async function transcribeAudio(
   options: TranscribeOptions,
 ): Promise<TranscriptionResponse | TranscriptionError> {
   try {
+    const audioUrl = new URL(options.audioUrl);
+    const allowedHosts = new Set([
+      ...((process.env.VOICE_ALLOWED_HOSTS ?? "").split(",").map((host: string) => host.trim()).filter(Boolean)),
+      ...[process.env.PUBLIC_API_BASE_URL, process.env.EXPO_PUBLIC_API_BASE_URL].filter(Boolean).map((value) => {
+        try { return new URL(value!).hostname; } catch { return ""; }
+      }).filter(Boolean),
+    ]);
+    const privateHost = /^(localhost|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[0-1])\.|\[?::1\]?|0\.0\.0\.0)$/i.test(audioUrl.hostname);
+    if (audioUrl.protocol !== "https:" || privateHost || !allowedHosts.has(audioUrl.hostname)) {
+      return { error: "مصدر الصوت غير مسموح", code: "INVALID_FORMAT", details: "استخدم مرفقًا مرفوعًا إلى تخزين Chat Bro أو نطاقًا موثوقًا." };
+    }
     // Step 1: Validate environment configuration
     if (!ENV.forgeApiUrl) {
       return {
@@ -99,7 +110,7 @@ export async function transcribeAudio(
     let audioBuffer: Buffer;
     let mimeType: string;
     try {
-      const response = await fetch(options.audioUrl);
+      const response = await fetch(audioUrl, { redirect: "error", signal: AbortSignal.timeout(30_000) });
       if (!response.ok) {
         return {
           error: "Failed to download audio file",
@@ -108,6 +119,8 @@ export async function transcribeAudio(
         };
       }
 
+      const contentLength = Number(response.headers.get("content-length") ?? 0);
+      if (contentLength > 16 * 1024 * 1024) return { error: "Audio file exceeds maximum size limit", code: "FILE_TOO_LARGE" };
       audioBuffer = Buffer.from(await response.arrayBuffer());
       mimeType = response.headers.get("content-type") || "audio/mpeg";
 

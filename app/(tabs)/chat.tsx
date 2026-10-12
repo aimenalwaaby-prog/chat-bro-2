@@ -49,6 +49,8 @@ type Message = {
 };
 const historyKey = (model: string) =>
   `chatbro:conversation:${encodeURIComponent(model)}`;
+const providerKeySelectionKey = (model: string) =>
+  `chatbro:conversation-provider-key:${encodeURIComponent(model)}`;
 const welcome = (model?: string): Message => ({
   id: `welcome-${model ?? "chatbro"}`,
   role: "assistant",
@@ -75,6 +77,7 @@ export default function ChatScreen() {
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [imageGenerationEnabled, setImageGenerationEnabled] = useState(false);
   const [providerOpen, setProviderOpen] = useState<Record<string, boolean>>({});
+  const [selectedProviderKeyId, setSelectedProviderKeyId] = useState<number | undefined>();
   const [deepThinkingEnabled, setDeepThinkingEnabled] = useState(false);
   const [localModels, setLocalModels] = useState<InstalledLocalModel[]>([]);
   const [serverCapabilities, setServerCapabilities] = useState<Record<string, boolean> | null>(null);
@@ -92,6 +95,7 @@ export default function ChatScreen() {
   const groqModels = trpc.models.groq.useQuery(undefined, { staleTime: 60_000, retry: 1 });
   const cloudflareModels = trpc.models.cloudflare.useQuery(undefined, { staleTime: 60_000, retry: 1 });
   const gatewayModels = trpc.models.gateways.useQuery(undefined, { staleTime: 60_000, retry: 1 });
+  const providerKeys = trpc.providerKeys.list.useQuery(undefined, { staleTime: 60_000, retry: 0 });
   const dynamicOpenRouterModels = useMemo<ChatBroModel[]>(() => (openRouterModels.data?.models ?? []).filter((model) => !model.outputModalities?.length || model.outputModalities.includes("text")).map((model) => {
     const candidate: ChatBroModel = {
       name: model.name, modelId: `openrouter:${model.id}`, provider: "OpenRouter", providerKey: "openrouter", icon: "hub",
@@ -164,8 +168,9 @@ export default function ChatScreen() {
   useEffect(() => {
     setLoadedHistory("");
     let active = true;
-    AsyncStorage.getItem(historyKey(historyModel)).then((stored) => {
+    Promise.all([AsyncStorage.getItem(historyKey(historyModel)), AsyncStorage.getItem(providerKeySelectionKey(historyModel))]).then(([stored, storedProviderKey]) => {
       if (!active) return;
+      setSelectedProviderKeyId(storedProviderKey ? Number(storedProviderKey) : undefined);
       try {
         const parsed = stored ? (JSON.parse(stored) as Message[]) : [];
         setMessages(
@@ -180,6 +185,9 @@ export default function ChatScreen() {
       active = false;
     };
   }, [selectedModel, historyModel]);
+  useEffect(() => {
+    if (loadedHistory === historyModel) void AsyncStorage.setItem(providerKeySelectionKey(historyModel), selectedProviderKeyId ? String(selectedProviderKeyId) : "");
+  }, [historyModel, loadedHistory, selectedProviderKeyId]);
   useEffect(() => {
     if (loadedHistory === historyModel && messages.length)
       void AsyncStorage.setItem(
@@ -356,7 +364,7 @@ export default function ChatScreen() {
     setAttachments([]);
     if (isImageCommand) {
       try {
-        const result = await generateImage.mutateAsync({ prompt: imagePrompt });
+        const result = await generateImage.mutateAsync({ prompt: imagePrompt, providerKeyId: selectedProviderKeyId });
         setMessages((current) => [...current, { id: `${Date.now()}-image`, role: "assistant", text: "تم إنشاء الصورة.", time: "الآن", attachments: [{ uri: result.url ?? "", remoteUrl: result.url, name: "generated.png", mimeType: "image/png", kind: "image" }] }]);
       } catch (error) {
         setMessages((current) => [...current, { id: `${Date.now()}-image-error`, role: "assistant", text: error instanceof Error ? error.message : "تعذر إنشاء الصورة.", time: "الآن" }]);
@@ -385,6 +393,7 @@ export default function ChatScreen() {
       }
       const response = await completeChat.mutateAsync({
         model: params.directModel || selectedRuntimeModel || undefined,
+        providerKeyId: selectedProviderKeyId,
         useWebSearch: webSearchEnabled,
         deepThinking: deepThinkingEnabled,
         messages: [...messages, userMessage].map((message, index) =>
@@ -647,6 +656,7 @@ export default function ChatScreen() {
               ))}
             </ScrollView>
           ) : null}
+          {providerKeys.data?.length ? <View className="mb-2 flex-row-reverse items-center gap-2"><MaterialIcons name="vpn-key" size={15} color={colors.primary} /><Text className="text-[10px] font-bold text-muted">مفتاح المسار:</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>{providerKeys.data.map((key) => <Pressable key={key.id} onPress={() => setSelectedProviderKeyId(selectedProviderKeyId === key.id ? undefined : key.id)} className="rounded-full border px-2.5 py-1.5" style={{ borderColor: selectedProviderKeyId === key.id ? colors.primary : colors.border, backgroundColor: selectedProviderKeyId === key.id ? "#E6F8FD" : colors.surface }}><Text className="text-[9px] font-bold text-foreground">{key.name} · {key.kind}</Text></Pressable>)}</ScrollView></View> : null}
           <View className="mb-2 flex-row-reverse flex-wrap items-center justify-between gap-2">
             <Pressable
               accessibilityRole="button"

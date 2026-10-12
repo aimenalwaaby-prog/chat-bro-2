@@ -6,12 +6,15 @@ import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_
 import { TRPCError } from "@trpc/server";
 import { processFile } from "./fileProcessing";
 import { storagePut } from "./storage";
-import { generateImage, listImageModels } from "./_core/imageGeneration";
+import { generateImage, generateImageWithCustomProvider, listImageModels } from "./_core/imageGeneration";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import * as db from "./db";
 import { z } from "zod";
 import { getProviderKey, getProviderKeyCandidates } from "./_core/provider-pool";
 import { assertUsageAvailable, enforceUsage, getSubscriptionConfig, getUsagePolicy } from "./_core/usage-policy";
+import { decryptProviderSecret, encryptProviderSecret } from "./_core/user-key-vault";
+import { modelSourceInput, normalizeModelSource } from "../shared/model-sources";
+import { inspectModelRepository, installRepository, readRepositoryFile, syncRepository } from "./_core/model-repositories";
 
 async function generateImageViaMediaService(input: Parameters<typeof generateImage>[0]) {
   const baseUrl = process.env.IMAGE_SERVICE_URL?.replace(/\/$/, "");
@@ -178,6 +181,11 @@ async function completeWithOpenAICompatible(
     model: payload.model ?? model,
     usage: payload.usage ?? null,
   };
+}
+
+async function completeWithUserProvider(model: string | undefined, messages: SimpleMessage[], baseUrl: string, apiKey: string, modelPrefix?: string | null) {
+  const selectedModel = model?.replace(/^custom:/, "") || modelPrefix || "default";
+  return completeWithOpenAICompatible("custom", selectedModel, messages, baseUrl, apiKey);
 }
 
 type GeminiPart = { text: string } | { inline_data: { mime_type: string; data: string } };
@@ -369,8 +377,10 @@ async function completeWithGateway(model: string, messages: SimpleMessage[]) {
       signal: AbortSignal.timeout(45_000),
     },
   );
-  if (!response.ok)
-    throw new Error(`Model gateway request failed: ${response.status}`);
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Model gateway request failed: ${response.status}${detail ? ` - ${detail.slice(0, 300)}` : ""}`);
+  }
   const payload = (await response.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
     model?: string;
@@ -386,6 +396,79 @@ async function completeWithGateway(model: string, messages: SimpleMessage[]) {
 
 export const appRouter = router({
   system: systemRouter,
+  providerKeys: router({
+    list: protectedProcedure.query(({ ctx }) => db.listUserProviderKeys(ctx.user.id)),
+    add: protectedProcedure.input(z.object({
+      name: z.string().trim().min(2).max(120),
+      kind: z.enum(["chat", "image", "both"]),
+      provider: z.string().trim().min(2).max(64),
+      baseUrl: z.string().url().refine((value) => value.startsWith("https://"), "استخدم HTTPS للمزود المخصص"),
+      apiKey: z.string().trim().min(8).max(500),
+      modelPrefix: z.string().trim().max(80).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const created = await db.createUserProviderKey({ ...input, userId: ctx.user.id, encryptedApiKey: encryptProviderSecret(input.apiKey) });
+      return created;
+    }),
+    remove: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ ctx, input }) => db.deleteUserProviderKey(ctx.user.id, input.id)),
+  }),
+  catalog: router({
+    searchSources: publicProcedure.input(modelSourceInput).query(async ({ input }) => {
+      const normalized = normalizeModelSource(input.source, input.reference);
+      const query = input.query?.trim() || normalized.reference;
+      if (input.source === "github") {
+        const response = await fetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(`${query} topic:machine-learning`)}&per_page=20`, { headers: { accept: "application/vnd.github+json", ...(process.env.GITHUB_TOKEN ? { authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}) }, signal: AbortSignal.timeout(15_000) });
+        if (!response.ok) throw new TRPCError({ code: "BAD_GATEWAY", message: "تعذر قراءة مستودعات GitHub." });
+        const payload = await response.json() as { items?: Array<{ full_name: string; html_url: string; description?: string; stargazers_count?: number; language?: string }> };
+        return { source: normalized, items: (payload.items ?? []).map((item) => ({ id: item.full_name, name: item.full_name, url: item.html_url, description: item.description ?? "", stars: item.stargazers_count ?? 0, language: item.language ?? "" })) };
+      }
+      if (input.source === "huggingface") {
+        const response = await fetch(`https://huggingface.co/api/models?search=${encodeURIComponent(query)}&limit=20&sort=downloads`, { signal: AbortSignal.timeout(15_000) });
+        if (!response.ok) throw new TRPCError({ code: "BAD_GATEWAY", message: "تعذر قراءة نماذج Hugging Face." });
+        const payload = await response.json() as Array<{ id: string; pipeline_tag?: string; downloads?: number; likes?: number }>;
+        return { source: normalized, items: payload.map((item) => ({ id: item.id, name: item.id, url: `https://huggingface.co/${item.id}`, description: item.pipeline_tag ?? "نموذج ذكاء اصطناعي", stars: item.likes ?? 0, downloads: item.downloads ?? 0 })) };
+      }
+      return { source: normalized, items: [{ id: normalized.modelId ?? normalized.reference, name: normalized.label, url: normalized.url, description: normalized.install ?? "مصدر نموذج مدعوم", stars: 0 }] };
+    }),
+    inspect: publicProcedure.input(modelSourceInput).query(({ input }) => inspectModelRepository(input.source, input.reference)),
+    sources: protectedProcedure.query(({ ctx }) => db.listUserModelSources(ctx.user.id)),
+    addSource: protectedProcedure.input(modelSourceInput).mutation(async ({ ctx, input }) => {
+      const inspection = await inspectModelRepository(input.source, input.reference);
+      return db.addModelSource({ userId: ctx.user.id, source: inspection.normalized.source, reference: inspection.normalized.reference, url: inspection.normalized.url, label: inspection.normalized.label, installMode: inspection.capabilities.installModes[0] ?? null });
+    }),
+    readFile: protectedProcedure.input(z.object({ sourceId: z.number().int().positive(), path: z.string().min(1).max(512) })).mutation(async ({ ctx, input }) => {
+      const saved = await db.getUserModelSource(ctx.user.id, input.sourceId);
+      if (!saved) throw new TRPCError({ code: "NOT_FOUND", message: "مصدر المستودع غير موجود." });
+      const inspection = await inspectModelRepository(saved.source as Parameters<typeof inspectModelRepository>[0], saved.reference);
+      return readRepositoryFile(inspection, input.path);
+    }),
+    sync: protectedProcedure.input(z.object({ sourceId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const saved = await db.getUserModelSource(ctx.user.id, input.sourceId);
+      if (!saved) throw new TRPCError({ code: "NOT_FOUND", message: "مصدر المستودع غير موجود." });
+      await db.updateModelSource(saved.id, ctx.user.id, { status: "syncing", lastError: null });
+      try {
+        const inspection = await inspectModelRepository(saved.source as Parameters<typeof inspectModelRepository>[0], saved.reference);
+        const result = await syncRepository(inspection);
+        return db.updateModelSource(saved.id, ctx.user.id, { status: "synced", metadataJson: JSON.stringify(result).slice(0, 500_000), lastSyncedAt: new Date(), lastError: null });
+      } catch (error) {
+        await db.updateModelSource(saved.id, ctx.user.id, { status: "failed", lastError: error instanceof Error ? error.message : "فشلت المزامنة." });
+        throw new TRPCError({ code: "BAD_GATEWAY", message: errorForClient(error) });
+      }
+    }),
+    install: protectedProcedure.input(z.object({ sourceId: z.number().int().positive(), mode: z.enum(["ollama-pull", "remote-model", "inference-api", "download-artifacts"]) })).mutation(async ({ ctx, input }) => {
+      const saved = await db.getUserModelSource(ctx.user.id, input.sourceId);
+      if (!saved) throw new TRPCError({ code: "NOT_FOUND", message: "مصدر المستودع غير موجود." });
+      await db.updateModelSource(saved.id, ctx.user.id, { status: "installing", installMode: input.mode, lastError: null });
+      try {
+        const inspection = await inspectModelRepository(saved.source as Parameters<typeof inspectModelRepository>[0], saved.reference);
+        const result = await installRepository(inspection, input.mode);
+        return db.updateModelSource(saved.id, ctx.user.id, { status: "installed", installedAt: new Date(), metadataJson: JSON.stringify(result).slice(0, 500_000), lastError: null });
+      } catch (error) {
+        await db.updateModelSource(saved.id, ctx.user.id, { status: "failed", lastError: error instanceof Error ? error.message : "فشل التثبيت." });
+        throw new TRPCError({ code: "BAD_GATEWAY", message: errorForClient(error) });
+      }
+    }),
+    remove: protectedProcedure.input(z.object({ sourceId: z.number().int().positive() })).mutation(({ ctx, input }) => db.deleteModelSource(ctx.user.id, input.sourceId)),
+  }),
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
@@ -437,11 +520,17 @@ export const appRouter = router({
             .min(1)
             .max(30),
           model: z.string().min(1).max(160).optional(),
+          providerKeyId: z.number().int().positive().optional(),
+          conversationId: z.number().int().positive().optional(),
           useWebSearch: z.boolean().optional(),
           deepThinking: z.boolean().optional(),
         }),
       )
       .mutation(async ({ input, ctx }) => {
+        if (input.providerKeyId && !ctx.user) throw new TRPCError({ code: "UNAUTHORIZED", message: "سجّل الدخول لاستخدام مفتاحك الخاص." });
+        const userProviderKey = input.providerKeyId && ctx.user ? await db.getUserProviderKey(ctx.user.id, input.providerKeyId) : undefined;
+        if (input.providerKeyId && !userProviderKey) throw new TRPCError({ code: "FORBIDDEN", message: "مفتاح المزود غير موجود أو لا تملك صلاحية استخدامه." });
+        if (userProviderKey && !["chat", "both"].includes(userProviderKey.kind)) throw new TRPCError({ code: "BAD_REQUEST", message: "هذا المفتاح مخصص للصور فقط." });
         enforceUsage({ req: ctx.req, user: ctx.user, kind: input.useWebSearch ? "search" : "chat", model: input.model });
         const record = async <T extends { model?: string | null; usage?: unknown }>(result: T) => {
           if (ctx.user) await db.recordUsage({ userId: ctx.user.id, model: result.model ?? input.model, provider: input.model?.split(":")[0] ?? "builtin", requestKind: input.useWebSearch ? "search" : "chat" });
@@ -460,11 +549,16 @@ export const appRouter = router({
           content: message.content,
         }));
         try {
-          if (input.model?.startsWith("ollama:") || input.model?.startsWith("llama:")) throw new Error("النماذج المحلية تعمل داخل التطبيق فقط.");
+          if (userProviderKey) return record(await completeWithUserProvider(input.model, simple, userProviderKey.baseUrl, decryptProviderSecret(userProviderKey.encryptedApiKey), userProviderKey.modelPrefix));
           const openRouterRoute = input.model?.startsWith("openrouter:") || (!input.model && Boolean(process.env.OPENROUTER_API_KEY));
           const shouldSearchFirst = Boolean(input.useWebSearch && !openRouterRoute);
           let routedMessages = messages;
           let routedSimple = simple;
+          if (input.model?.startsWith("ollama:")) {
+            const ollamaBase = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/$/, "");
+            return record(await completeWithOpenAICompatible("ollama", input.model, routedSimple, `${ollamaBase}/v1`, "ollama"));
+          }
+          if (input.model?.startsWith("llama:")) throw new Error("هذا النموذج المحلي يعمل داخل التطبيق فقط.");
           if (shouldSearchFirst) {
             const searchContext = await collectWebSearchContext(simple);
             const searchSystemMessage: Message = { role: "system", content: searchContext };
@@ -493,9 +587,10 @@ export const appRouter = router({
       }),
   }),
   attachments: router({
-    upload: publicProcedure.input(z.object({ name: z.string().min(1).max(255), mimeType: z.string().max(160), base64: z.string().min(1), conversationId: z.number().int().positive().optional() })).mutation(async ({ input, ctx }) => {
+    upload: protectedProcedure.input(z.object({ name: z.string().min(1).max(255), mimeType: z.string().max(160), base64: z.string().min(1), conversationId: z.number().int().positive().optional() })).mutation(async ({ input, ctx }) => {
       enforceUsage({ req: ctx.req, user: ctx.user, kind: "file" });
       try {
+        if (input.conversationId && !(await db.getUserConversation(ctx.user.id, input.conversationId))) throw new TRPCError({ code: "FORBIDDEN", message: "لا تملك هذه المحادثة." });
         const file = await processFile(input);
         const saved = await storagePut(`uploads/${Date.now()}-${file.safeName}`, file.buffer, file.mimeType);
         const url = `${publicApiBase()}${saved.url}`;
@@ -515,10 +610,16 @@ export const appRouter = router({
         return { available: false, models: [] };
       }
     }),
-    generate: publicProcedure.input(z.object({ prompt: z.string().min(3).max(4000), model: z.string().max(120).optional(), quality: z.enum(["medium", "high"]).optional() })).mutation(async ({ input, ctx }) => {
+    generate: publicProcedure.input(z.object({ prompt: z.string().min(3).max(4000), model: z.string().max(120).optional(), quality: z.enum(["medium", "high"]).optional(), providerKeyId: z.number().int().positive().optional() })).mutation(async ({ input, ctx }) => {
       assertUsageAvailable({ req: ctx.req, user: ctx.user, kind: "image" });
       try {
-        const result = await (process.env.IMAGE_SERVICE_URL && process.env.SERVICE_ROLE !== "media" ? generateImageViaMediaService(input) : generateImage(input));
+        if (input.providerKeyId && !ctx.user) throw new TRPCError({ code: "UNAUTHORIZED", message: "سجّل الدخول لاستخدام مفتاح الصور الخاص بك." });
+        const userProviderKey = input.providerKeyId && ctx.user ? await db.getUserProviderKey(ctx.user.id, input.providerKeyId) : undefined;
+        if (input.providerKeyId && !userProviderKey) throw new TRPCError({ code: "FORBIDDEN", message: "مفتاح مزود الصور غير موجود أو لا تملك صلاحية استخدامه." });
+        if (userProviderKey && !["image", "both"].includes(userProviderKey.kind)) throw new TRPCError({ code: "BAD_REQUEST", message: "هذا المفتاح مخصص للمحادثة فقط." });
+        const result = userProviderKey
+          ? await generateImageWithCustomProvider(input, { baseUrl: userProviderKey.baseUrl, apiKey: decryptProviderSecret(userProviderKey.encryptedApiKey), model: userProviderKey.modelPrefix })
+          : await (process.env.IMAGE_SERVICE_URL && process.env.SERVICE_ROLE !== "media" ? generateImageViaMediaService(input) : generateImage(input));
         enforceUsage({ req: ctx.req, user: ctx.user, kind: "image", model: input.model });
         if (ctx.user) await db.recordUsage({ userId: ctx.user.id, model: input.model, provider: input.model?.split(":")[0] ?? "image", requestKind: "image" });
         return result;
@@ -526,7 +627,7 @@ export const appRouter = router({
     }),
   }),
   voice: router({
-    transcribe: publicProcedure.input(z.object({ audioUrl: z.string().url(), language: z.string().max(12).optional(), prompt: z.string().max(500).optional() })).mutation(async ({ input, ctx }) => {
+    transcribe: protectedProcedure.input(z.object({ audioUrl: z.string().url().refine((value) => value.startsWith("https://"), "يجب أن يكون رابط الصوت HTTPS"), language: z.string().max(12).optional(), prompt: z.string().max(500).optional() })).mutation(async ({ input, ctx }) => {
       enforceUsage({ req: ctx.req, user: ctx.user, kind: "voice" });
       const result = await transcribeAudio(input);
       if ("error" in result) throw new TRPCError({ code: "BAD_GATEWAY", message: result.error });

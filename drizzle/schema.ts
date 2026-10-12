@@ -39,6 +39,37 @@ export const conversations = mysqlTable("conversations", {
   userId: int("userId").notNull(),
   title: varchar("title", { length: 255 }).notNull().default("محادثة جديدة"),
   model: varchar("model", { length: 160 }),
+  providerKeyId: bigint("providerKeyId", { mode: "number" }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const providerKeys = mysqlTable("provider_keys", {
+  id: bigint("id", { mode: "number" }).autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  name: varchar("name", { length: 120 }).notNull(),
+  kind: mysqlEnum("kind", ["chat", "image", "both"]).notNull().default("both"),
+  provider: varchar("provider", { length: 64 }).notNull(),
+  baseUrl: varchar("baseUrl", { length: 512 }).notNull(),
+  encryptedApiKey: text("encryptedApiKey").notNull(),
+  modelPrefix: varchar("modelPrefix", { length: 80 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const modelSources = mysqlTable("model_sources", {
+  id: bigint("id", { mode: "number" }).autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  source: varchar("source", { length: 32 }).notNull(),
+  reference: varchar("reference", { length: 240 }).notNull(),
+  url: varchar("url", { length: 512 }).notNull(),
+  label: varchar("label", { length: 255 }).notNull(),
+  status: mysqlEnum("status", ["added", "syncing", "synced", "installing", "installed", "failed"]).notNull().default("added"),
+  metadataJson: text("metadataJson"),
+  installMode: varchar("installMode", { length: 32 }),
+  lastSyncedAt: timestamp("lastSyncedAt"),
+  installedAt: timestamp("installedAt"),
+  lastError: text("lastError"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
