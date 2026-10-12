@@ -13,7 +13,7 @@ import { z } from "zod";
 import { getProviderKey, getProviderKeyCandidates } from "./_core/provider-pool";
 import { assertUsageAvailable, enforceUsage, getSubscriptionConfig, getUsagePolicy } from "./_core/usage-policy";
 import { decryptProviderSecret, encryptProviderSecret } from "./_core/user-key-vault";
-import { modelSourceInput, normalizeModelSource } from "../shared/model-sources";
+import { modelSourceInput, modelSourceKinds, normalizeModelSource } from "../shared/model-sources";
 import { inspectModelRepository, installRepository, readRepositoryFile, syncRepository } from "./_core/model-repositories";
 
 async function generateImageViaMediaService(input: Parameters<typeof generateImage>[0]) {
@@ -28,7 +28,11 @@ async function generateImageViaMediaService(input: Parameters<typeof generateIma
       body: JSON.stringify(input),
       signal: AbortSignal.timeout(150_000),
     });
-    if (response.ok) return (await response.json()) as Awaited<ReturnType<typeof generateImage>>;
+    if (response.ok) {
+      const result = await response.json() as Awaited<ReturnType<typeof generateImage>>;
+      if (typeof result.url === "string" && result.url.length > 0) return result;
+      if (!hasDirectProvider) throw new Error("خدمة الصور أعادت استجابة ناجحة بلا رابط صورة صالح.");
+    }
     const detail = await response.text().catch(() => "");
     if (!hasDirectProvider || ![502, 503, 504].includes(response.status)) throw new Error(`خدمة الصور الثانوية لم تستجب (${response.status})${detail ? `: ${detail.slice(0, 240)}` : ""}.`);
   } catch (error) {
@@ -41,6 +45,10 @@ type SimpleMessage = { role: string; content: unknown };
 const publicApiBase = () => (process.env.PUBLIC_API_BASE_URL ?? "https://chatbro-api.onrender.com").replace(/\/$/, "");
 const errorForClient = (error: unknown) => {
   const text = error instanceof Error ? error.message : "تعذر تنفيذ الطلب";
+  if (/GitHub API/i.test(text) && /حد|rate limit|GITHUB_TOKEN/i.test(text)) return text;
+  if (/OpenRouter image request failed.*\b(401|403)\b/i.test(text)) return "رفض OpenRouter مفتاح الخادم أو صلاحية توليد الصور (401/403). تحقّق من OPENROUTER_API_KEY وصلاحية الصور في حساب المزود.";
+  if (/(?:image request failed|image generation request failed).*\b402\b/i.test(text)) return "رفض مزود الصور الطلب بسبب الرصيد أو الفوترة (HTTP 402). افحص حالة حساب المزود أو اختر مزودًا آخر.";
+  if (/(?:image request failed|image generation request failed).*\b(401|403)\b/i.test(text)) return "رفض مزود الصور المفتاح أو الصلاحية (401/403). تحقق من المفتاح ونوع صلاحياته في إعدادات المزود.";
   if (/key|configured|authentication/i.test(text)) return "مزود الذكاء الاصطناعي يحتاج إعداد مفتاح على الخادم.";
   if (/quota|rate|429|limit|credit|balance|insufficient funds|exhausted/i.test(text)) return "انتهى رصيد أو حصة مزود الصور الخارجي. تحقّق من رصيد مفتاح المزود أو اختر مزودًا آخر؛ هذه ليست حصة التطبيق.";
   if (/timeout|abort|timed out/i.test(text)) return "انتهت مهلة المزود. حاول مرة أخرى.";
@@ -417,23 +425,54 @@ export const appRouter = router({
       const query = input.query?.trim() || normalized.reference;
       if (input.source === "github") {
         const response = await fetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(`${query} topic:machine-learning`)}&per_page=20`, { headers: { accept: "application/vnd.github+json", ...(process.env.GITHUB_TOKEN ? { authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}) }, signal: AbortSignal.timeout(15_000) });
-        if (!response.ok) throw new TRPCError({ code: "BAD_GATEWAY", message: "تعذر قراءة مستودعات GitHub." });
+        if (!response.ok) {
+          const detail = await response.text().catch(() => "");
+          const rateLimited = (response.status === 403 || response.status === 429) && /rate limit/i.test(detail);
+          throw new TRPCError({ code: "BAD_GATEWAY", message: rateLimited ? "تم تجاوز حد GitHub API لهذا الخادم. أعد المحاولة لاحقًا أو اضبط GITHUB_TOKEN صالحًا في أسرار خادم Chat Bro." : `تعذر قراءة مستودعات GitHub (${response.status}).` });
+        }
         const payload = await response.json() as { items?: Array<{ full_name: string; html_url: string; description?: string; stargazers_count?: number; language?: string }> };
         return { source: normalized, items: (payload.items ?? []).map((item) => ({ id: item.full_name, name: item.full_name, url: item.html_url, description: item.description ?? "", stars: item.stargazers_count ?? 0, language: item.language ?? "" })) };
       }
       if (input.source === "huggingface") {
         const response = await fetch(`https://huggingface.co/api/models?search=${encodeURIComponent(query)}&limit=20&sort=downloads`, { signal: AbortSignal.timeout(15_000) });
         if (!response.ok) throw new TRPCError({ code: "BAD_GATEWAY", message: "تعذر قراءة نماذج Hugging Face." });
-        const payload = await response.json() as Array<{ id: string; pipeline_tag?: string; downloads?: number; likes?: number }>;
-        return { source: normalized, items: payload.map((item) => ({ id: item.id, name: item.id, url: `https://huggingface.co/${item.id}`, description: item.pipeline_tag ?? "نموذج ذكاء اصطناعي", stars: item.likes ?? 0, downloads: item.downloads ?? 0 })) };
+        const payload = await response.json() as Array<{ id: string; pipeline_tag?: string; downloads?: number; likes?: number; cardData?: { license?: string | string[] } }>;
+        return { source: normalized, items: payload.map((item) => ({ id: item.id, name: item.id, url: `https://huggingface.co/${item.id}`, description: item.pipeline_tag ?? "نموذج ذكاء اصطناعي", task: item.pipeline_tag ?? "غير محدد", license: Array.isArray(item.cardData?.license) ? item.cardData.license.join(", ") : item.cardData?.license ?? "", stars: item.likes ?? 0, likes: item.likes ?? 0, downloads: item.downloads ?? 0 })) };
       }
       return { source: normalized, items: [{ id: normalized.modelId ?? normalized.reference, name: normalized.label, url: normalized.url, description: normalized.install ?? "مصدر نموذج مدعوم", stars: 0 }] };
     }),
-    inspect: publicProcedure.input(modelSourceInput).query(({ input }) => inspectModelRepository(input.source, input.reference)),
+    inspect: publicProcedure.input(modelSourceInput).query(async ({ input }) => {
+      try {
+        return await inspectModelRepository(input.source, input.reference);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_GATEWAY", message: errorForClient(error) });
+      }
+    }),
     sources: protectedProcedure.query(({ ctx }) => db.listUserModelSources(ctx.user.id)),
+    removeSource: protectedProcedure.input(z.object({ sourceId: z.number().int().positive() })).mutation(({ ctx, input }) => db.deleteModelSource(ctx.user.id, input.sourceId)),
+    library: protectedProcedure.query(({ ctx }) => db.listUserModelLibrary(ctx.user.id)),
+    saveModel: protectedProcedure.input(z.object({
+      source: z.enum(modelSourceKinds),
+      modelId: z.string().trim().min(1).max(255),
+      name: z.string().trim().min(1).max(255),
+      url: z.string().url().max(512).refine((value) => value.startsWith("https://"), "يجب أن يكون رابط النموذج HTTPS"),
+      description: z.string().trim().max(4000).optional(),
+      task: z.string().trim().max(96).optional(),
+      license: z.string().trim().max(120).optional(),
+      downloads: z.number().int().nonnegative().optional(),
+      likes: z.number().int().nonnegative().optional(),
+      sourceId: z.number().int().positive().optional(),
+      metadataJson: z.string().max(50_000).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      if (input.sourceId && !await db.getUserModelSource(ctx.user.id, input.sourceId)) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "مستودع المصدر غير موجود في حسابك." });
+      }
+      return db.saveUserModelToLibrary({ ...input, userId: ctx.user.id });
+    }),
+    removeModel: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ ctx, input }) => db.deleteUserModelFromLibrary(ctx.user.id, input.id)),
     addSource: protectedProcedure.input(modelSourceInput).mutation(async ({ ctx, input }) => {
-      const inspection = await inspectModelRepository(input.source, input.reference);
-      return db.addModelSource({ userId: ctx.user.id, source: inspection.normalized.source, reference: inspection.normalized.reference, url: inspection.normalized.url, label: inspection.normalized.label, installMode: inspection.capabilities.installModes[0] ?? null });
+      const normalized = normalizeModelSource(input.source, input.reference);
+      return db.addModelSource({ userId: ctx.user.id, source: normalized.source, reference: normalized.reference, url: normalized.url, label: normalized.label, installMode: normalized.install ?? null });
     }),
     readFile: protectedProcedure.input(z.object({ sourceId: z.number().int().positive(), path: z.string().min(1).max(512) })).mutation(async ({ ctx, input }) => {
       const saved = await db.getUserModelSource(ctx.user.id, input.sourceId);

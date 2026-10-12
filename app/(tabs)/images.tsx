@@ -112,6 +112,7 @@ export default function ImagesScreen() {
         <Text className="mb-2 mt-5 text-right text-[12px] font-bold text-foreground">وصف الصورة</Text>
         <TextInput value={prompt} onChangeText={setPrompt} multiline maxLength={4000} textAlignVertical="top" placeholder="صف الصورة التي تريدها بالتفصيل…" placeholderTextColor={colors.muted} className="min-h-[150px] rounded-[20px] border bg-surface px-4 py-4 text-right text-[13px] leading-6 text-foreground" style={{ borderColor: colors.border, writingDirection: "rtl" }} />
         <Text className="mt-2 text-right text-[9px] text-muted">{prompt.length}/4000 · {serverCapabilities === null ? "جارٍ التحقق من الخادم…" : "الطلب يُرسل إلى مزود الصور المهيأ وقد يُحتسب استخدام خارجي."}</Text>
+        {serverCapabilities?.imageStorage === false ? <Text className="mt-2 text-right text-[10px] leading-5 text-amber-700">تخزين الصور غير مهيأ على الخادم حاليًا؛ قد يفشل حفظ ناتج Base64 حتى بعد نجاح المزود.</Text> : null}
         <Pressable disabled={generateImage.isPending} onPress={() => void create()} className="mt-4 flex-row-reverse items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-4" style={{ opacity: generateImage.isPending ? 0.55 : 1 }}>
           {generateImage.isPending ? <ActivityIndicator color="#062034" /> : <MaterialIcons name="auto-awesome" size={20} color="#062034" />}
           <Text className="text-[12px] font-extrabold text-[#062034]">{generateImage.isPending ? "جارٍ إنشاء الصورة…" : "إنشاء الصورة"}</Text>

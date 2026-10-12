@@ -94,6 +94,10 @@ services:
         value: 3000
       - key: SERVICE_ROLE
         value: media
+      - key: BUILT_IN_FORGE_API_URL
+        value: https://forge.manus.ai
+      - key: BUILT_IN_FORGE_API_KEY
+        sync: false
       - key: IMAGE_SERVICE_TOKEN
         sync: false
       - key: OPENROUTER_API_KEY

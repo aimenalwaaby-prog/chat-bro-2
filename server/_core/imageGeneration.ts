@@ -202,7 +202,7 @@ export type ImageModelInfo = {
   pricing?: { prompt?: string; completion?: string; image?: string };
   access?: "مجاني" | "مدفوع" | "غير محدد" | "حسب الخادم";
   dailyLimit?: string;
-  status?: "جاهز" | "قريبًا" | "داخل التطبيق فقط";
+  status?: "جاهز" | "قريبًا" | "داخل التطبيق فقط" | "متاح في الكتالوج — لم يُختبر" | "مهيأ — لم يُختبر التوليد";
   ready?: boolean;
   runtime?: "server" | "in-app";
 };
@@ -238,7 +238,7 @@ export async function listImageModels(): Promise<ListImageModelsResponse> {
     return false;
   }).map((model) => {
     const ready = model.provider === "Replicate" ? Boolean(process.env.REPLICATE_API_TOKEN) : model.provider === "fal.ai" ? Boolean(process.env.FAL_KEY) : model.ready;
-    return { ...model, ready, status: ready ? "جاهز" as const : model.status };
+    return { ...model, ready: false, status: ready ? "مهيأ — لم يُختبر التوليد" as const : model.status };
   });
   if (apiKey) {
     try {
@@ -251,7 +251,7 @@ export async function listImageModels(): Promise<ListImageModelsResponse> {
         return { models: [...(payload.data ?? []).filter((m) => m.id).map((m) => {
           const pricing = m.pricing;
           const free = pricing && [pricing.prompt, pricing.completion, pricing.image].some((value) => value === "0");
-          return { id: m.id, model: m.id, provider: "OpenRouter", pricing, access: free ? "مجاني" as const : pricing ? "مدفوع" as const : "غير محدد" as const, dailyLimit: free ? "حسب الحصة المجانية للمزود" : "حسب رصيد ومعدل المزود", status: "جاهز" as const, ready: true, runtime: "server" as const };
+          return { id: m.id, model: m.id, provider: "OpenRouter", pricing, access: free ? "مجاني" as const : pricing ? "مدفوع" as const : "غير محدد" as const, dailyLimit: free ? "حسب الحصة المجانية للمزود" : "حسب رصيد ومعدل المزود", status: "متاح في الكتالوج — لم يُختبر" as const, ready: false, runtime: "server" as const };
         }), ...staticModels] };
       }
       const catalogResponse = await fetch("https://openrouter.ai/api/v1/models", {
@@ -263,7 +263,7 @@ export async function listImageModels(): Promise<ListImageModelsResponse> {
         return { models: [...(payload.data ?? []).filter((m) => m.id && m.architecture?.output_modalities?.includes("image")).map((m) => {
           const pricing = m.pricing;
           const free = pricing && [pricing.prompt, pricing.completion, pricing.image].some((value) => value === "0");
-          return { id: m.id, model: m.id, provider: "OpenRouter", pricing, access: free ? "مجاني" as const : pricing ? "مدفوع" as const : "غير محدد" as const, dailyLimit: free ? "حسب الحصة المجانية للمزود" : "حسب رصيد ومعدل المزود", status: "جاهز" as const, ready: true, runtime: "server" as const };
+          return { id: m.id, model: m.id, provider: "OpenRouter", pricing, access: free ? "مجاني" as const : pricing ? "مدفوع" as const : "غير محدد" as const, dailyLimit: free ? "حسب الحصة المجانية للمزود" : "حسب رصيد ومعدل المزود", status: "متاح في الكتالوج — لم يُختبر" as const, ready: false, runtime: "server" as const };
         }), ...staticModels] };
       }
     } catch {}
@@ -282,7 +282,7 @@ export async function listImageModels(): Promise<ListImageModelsResponse> {
     });
     if (!response.ok) throw new Error(`Forge image model listing failed: ${response.status}`);
     const payload = (await response.json()) as { models?: ImageModelInfo[] };
-    return { models: [...(payload.models ?? []).map((model) => ({ ...model, provider: model.provider ?? "Forge", access: model.access ?? "حسب الخادم", dailyLimit: model.dailyLimit ?? "حسب إعداد الخادم", status: "جاهز" as const, ready: true, runtime: "server" as const })), ...staticModels] };
+    return { models: [...(payload.models ?? []).map((model) => ({ ...model, provider: model.provider ?? "Forge", access: model.access ?? "حسب الخادم", dailyLimit: model.dailyLimit ?? "حسب إعداد الخادم", status: "مهيأ — لم يُختبر التوليد" as const, ready: false, runtime: "server" as const })), ...staticModels] };
   }
   return { models: staticModels };
 }

@@ -105,6 +105,7 @@ async function startServer() {
         fireworks: Boolean(process.env.FIREWORKS_API_KEY),
         comfyui: Boolean(process.env.COMFYUI_BASE_URL),
         imageService: Boolean(process.env.IMAGE_SERVICE_URL),
+        imageStorage: Boolean(ENV.forgeApiUrl && ENV.forgeApiKey),
       },
     });
   };

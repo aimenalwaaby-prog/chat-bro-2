@@ -8,6 +8,7 @@ const navigation = [
   { href: "/", label: "الرئيسية", icon: "home" as const },
   { href: "/chat", label: "المحادثة", icon: "chat" as const },
   { href: "/models", label: "النماذج", icon: "widgets" as const },
+  { href: "/model-library", label: "مكتبة النماذج", icon: "inventory-2" as const },
   { href: "/local-models", label: "النماذج المحلية", icon: "smart-toy" as const },
   { href: "/images", label: "إنشاء الصور", icon: "image" as const },
   { href: "/web-sites", label: "أدوات الويب", icon: "language" as const },

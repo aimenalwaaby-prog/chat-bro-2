@@ -5,6 +5,7 @@ import {
   mysqlTable,
   text,
   timestamp,
+  uniqueIndex,
   varchar,
 } from "drizzle-orm/mysql-core";
 
@@ -72,7 +73,26 @@ export const modelSources = mysqlTable("model_sources", {
   lastError: text("lastError"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (table) => ({ userSourceReferenceUnique: uniqueIndex("model_sources_user_ref_unique").on(table.userId, table.source, table.reference) }));
+
+export const modelLibrary = mysqlTable("model_library", {
+  id: bigint("id", { mode: "number" }).autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  source: varchar("source", { length: 32 }).notNull(),
+  modelId: varchar("modelId", { length: 255 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  url: varchar("url", { length: 512 }).notNull(),
+  description: text("description"),
+  task: varchar("task", { length: 96 }),
+  license: varchar("license", { length: 120 }),
+  downloads: bigint("downloads", { mode: "number" }),
+  likes: int("likes"),
+  sourceId: bigint("sourceId", { mode: "number" }),
+  status: mysqlEnum("status", ["saved", "downloading", "downloaded", "installed", "failed"]).notNull().default("saved"),
+  metadataJson: text("metadataJson"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({ userSourceModelUnique: uniqueIndex("model_library_user_source_model_unique").on(table.userId, table.source, table.modelId) }));
 
 export const messages = mysqlTable("messages", {
   id: bigint("id", { mode: "number" }).autoincrement().primaryKey(),
