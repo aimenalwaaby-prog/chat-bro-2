@@ -10,6 +10,7 @@ const schemeFromBundleId = `manus${timestamp}`;
 const DEPLOYED_OAUTH_PORTAL = "https://manus.im";
 const DEPLOYED_OAUTH_SERVER = "https://api.manus.im";
 const DEPLOYED_APP_ID = "77Jvovp6K2UDiC56uFD6LT";
+const GOOGLE_OAUTH_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? "";
 
 const env = {
   portal: process.env.EXPO_PUBLIC_OAUTH_PORTAL_URL ?? DEPLOYED_OAUTH_PORTAL,
@@ -30,6 +31,7 @@ export const APP_ID = env.appId;
 export const OWNER_OPEN_ID = env.ownerId;
 export const OWNER_NAME = env.ownerName;
 export const API_BASE_URL = env.apiBaseUrl;
+export const DIRECT_GOOGLE_OAUTH = Boolean(GOOGLE_OAUTH_CLIENT_ID);
 
 /**
  * Get the API base URL, using Render for production unless explicitly overridden.
@@ -89,6 +91,7 @@ export const getRedirectUri = () => {
 };
 
 export const getLoginUrl = () => {
+  if (DIRECT_GOOGLE_OAUTH) return `${getApiBaseUrl()}/api/oauth/google`;
   const redirectUri = getRedirectUri();
   const state = encodeState(redirectUri);
 
