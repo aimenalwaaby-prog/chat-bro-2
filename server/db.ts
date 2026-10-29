@@ -270,6 +270,26 @@ export async function touchConversation(userId: number, conversationId: number) 
   await db.update(conversations).set({ updatedAt: new Date() }).where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)));
 }
 
+export async function renameConversation(userId: number, conversationId: number, title: string) {
+  const db = await getDb();
+  if (!db) return false;
+  const { conversations } = await import("../drizzle/schema");
+  const result = await db.update(conversations).set({ title: title.trim().slice(0, 255), updatedAt: new Date() }).where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)));
+  return Number(result[0].affectedRows ?? 0) > 0;
+}
+
+export async function deleteConversation(userId: number, conversationId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const { conversations, messages, attachments } = await import("../drizzle/schema");
+  const owned = await getUserConversation(userId, conversationId);
+  if (!owned) return false;
+  await db.delete(messages).where(eq(messages.conversationId, conversationId));
+  await db.delete(attachments).where(eq(attachments.conversationId, conversationId));
+  const result = await db.delete(conversations).where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)));
+  return Number(result[0].affectedRows ?? 0) > 0;
+}
+
 export async function listUserConversations(userId: number) {
   const db = await getDb();
   if (!db) return [];

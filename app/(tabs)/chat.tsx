@@ -80,6 +80,8 @@ export default function ChatScreen() {
   const [deepThinkingEnabled, setDeepThinkingEnabled] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [archivedConversationId, setArchivedConversationId] = useState<number>();
+  const [renameTarget, setRenameTarget] = useState<number>();
+  const [renameTitle, setRenameTitle] = useState("");
   const [localModels, setLocalModels] = useState<InstalledLocalModel[]>([]);
   const [serverCapabilities, setServerCapabilities] = useState<Record<string, boolean> | null>(null);
   const completeChat = trpc.chat.complete.useMutation();
@@ -95,6 +97,8 @@ export default function ChatScreen() {
   const gatewayModels = trpc.models.gateways.useQuery(undefined, { staleTime: 60_000, retry: 1 });
   const providerKeys = trpc.providerKeys.list.useQuery(undefined, { staleTime: 60_000, retry: 0 });
   const savedConversations = trpc.conversations.list.useQuery(undefined, { enabled: historyOpen, staleTime: 30_000, retry: 0 });
+  const removeConversation = trpc.conversations.remove.useMutation({ onSuccess: () => void savedConversations.refetch() });
+  const renameConversation = trpc.conversations.rename.useMutation({ onSuccess: () => void savedConversations.refetch() });
   const archivedMessages = trpc.conversations.messages.useQuery(
     { conversationId: archivedConversationId as number },
     { enabled: Boolean(archivedConversationId), retry: 0 },
@@ -432,7 +436,8 @@ export default function ChatScreen() {
         {historyOpen ? <View className="mt-2 rounded-2xl border p-2" style={{ borderColor: colors.border, backgroundColor: colors.surface }}>
           <Text className="px-2 py-1 text-right text-[10px] font-bold text-muted">محادثات هذا النموذج المحفوظة في حسابك</Text>
           {savedConversations.error ? <Text className="px-2 py-2 text-right text-[10px] text-muted">سجّل الدخول لرؤية المحادثات المحفوظة على الخادم.</Text> : null}
-          {(savedConversations.data ?? []).filter((item) => !selectedRuntimeModel || item.model === selectedRuntimeModel).slice(0, 8).map((item) => <Pressable key={item.id} onPress={() => setArchivedConversationId(item.id)} className="mt-1 rounded-xl border px-3 py-2" style={{ borderColor: colors.border }}><Text numberOfLines={1} className="text-right text-[11px] font-bold text-foreground">{item.title}</Text><Text className="mt-1 text-right text-[9px] text-muted">{item.model ?? "المساعد العام"} · {new Date(item.updatedAt).toLocaleDateString("ar-SA")}</Text></Pressable>)}
+          {renameTarget ? <View className="mt-2 flex-row-reverse gap-2"><TextInput value={renameTitle} onChangeText={setRenameTitle} placeholder="الاسم الجديد" placeholderTextColor={colors.muted} className="flex-1 rounded-xl border px-3 py-2 text-right text-[11px] text-foreground" style={{ borderColor: colors.border, writingDirection: "rtl" }} /><Pressable onPress={() => { if (renameTitle.trim()) renameConversation.mutate({ conversationId: renameTarget, title: renameTitle.trim() }); setRenameTarget(undefined); }} className="rounded-xl bg-primary px-3 py-2"><Text className="text-[10px] font-bold text-[#062034]">حفظ</Text></Pressable></View> : null}
+          {(savedConversations.data ?? []).filter((item) => !selectedRuntimeModel || item.model === selectedRuntimeModel).slice(0, 8).map((item) => <View key={item.id} className="mt-1 flex-row-reverse items-center rounded-xl border px-2 py-1" style={{ borderColor: colors.border }}><Pressable onPress={() => setArchivedConversationId(item.id)} className="flex-1 px-1 py-1"><Text numberOfLines={1} className="text-right text-[11px] font-bold text-foreground">{item.title}</Text><Text className="mt-1 text-right text-[9px] text-muted">{item.model ?? "المساعد العام"} · {new Date(item.updatedAt).toLocaleDateString("ar-SA")}</Text></Pressable><Pressable onPress={() => { setRenameTarget(item.id); setRenameTitle(item.title); }} className="h-8 w-8 items-center justify-center"><MaterialIcons name="edit" size={15} color={colors.muted} /></Pressable><Pressable onPress={() => Alert.alert("حذف المحادثة؟", "سيُحذف سجلها نهائيًا من حسابك.", [{ text: "إلغاء", style: "cancel" }, { text: "حذف", style: "destructive", onPress: () => removeConversation.mutate({ conversationId: item.id }) }])} className="h-8 w-8 items-center justify-center"><MaterialIcons name="delete-outline" size={16} color="#C94D54" /></Pressable></View>)}
           {savedConversations.isSuccess && !(savedConversations.data ?? []).some((item) => !selectedRuntimeModel || item.model === selectedRuntimeModel) ? <Text className="px-2 py-2 text-right text-[10px] text-muted">لا توجد محادثات محفوظة لهذا النموذج بعد.</Text> : null}
         </View> : null}
         <View

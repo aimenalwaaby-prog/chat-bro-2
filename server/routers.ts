@@ -701,6 +701,8 @@ export const appRouter = router({
     list: protectedProcedure.query(({ ctx }) => db.listUserConversations(ctx.user.id)),
     messages: protectedProcedure.input(z.object({ conversationId: z.number().int().positive() })).query(({ ctx, input }) => db.listConversationMessages(ctx.user.id, input.conversationId)),
     create: protectedProcedure.input(z.object({ title: z.string().max(255).optional(), model: z.string().max(160).optional() })).mutation(({ ctx, input }) => db.createConversation(ctx.user.id, input.title, input.model)),
+    rename: protectedProcedure.input(z.object({ conversationId: z.number().int().positive(), title: z.string().trim().min(1).max(255) })).mutation(({ ctx, input }) => db.renameConversation(ctx.user.id, input.conversationId, input.title)),
+    remove: protectedProcedure.input(z.object({ conversationId: z.number().int().positive() })).mutation(({ ctx, input }) => db.deleteConversation(ctx.user.id, input.conversationId)),
   }),
   models: router({
     builtIn: publicProcedure.query(async () => {
