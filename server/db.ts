@@ -263,6 +263,13 @@ export async function saveMessage(input: { conversationId: number; role: "system
   return Number(result[0].insertId);
 }
 
+export async function touchConversation(userId: number, conversationId: number) {
+  const db = await getDb();
+  if (!db) return;
+  const { conversations } = await import("../drizzle/schema");
+  await db.update(conversations).set({ updatedAt: new Date() }).where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)));
+}
+
 export async function listUserConversations(userId: number) {
   const db = await getDb();
   if (!db) return [];

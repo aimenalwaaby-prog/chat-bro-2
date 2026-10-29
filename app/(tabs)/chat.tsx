@@ -3,9 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
-import * as Speech from "expo-speech";
 import * as FileSystem from "expo-file-system/legacy";
-import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from "expo-audio";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -65,6 +63,7 @@ export default function ChatScreen() {
   const params = useLocalSearchParams<{ prompt?: string; model?: string; directModel?: string }>();
   const initialModel = params.model ?? "";
   const [selectedModel, setSelectedModel] = useState(initialModel);
+  const [conversationId, setConversationId] = useState<number | undefined>();
   const [messages, setMessages] = useState<Message[]>([
     welcome(initialModel || undefined),
   ]);
@@ -72,7 +71,6 @@ export default function ChatScreen() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [loadedHistory, setLoadedHistory] = useState("");
-  const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [modelsOpen, setModelsOpen] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [imageGenerationEnabled, setImageGenerationEnabled] = useState(false);
@@ -84,9 +82,6 @@ export default function ChatScreen() {
   const completeChat = trpc.chat.complete.useMutation();
   const uploadFile = trpc.attachments.upload.useMutation();
   const generateImage = trpc.images.generate.useMutation();
-  const transcribe = trpc.voice.transcribe.useMutation();
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const recorderState = useAudioRecorderState(recorder);
   const historyModel = selectedModel || "Chat Bro";
   const openRouterModels = trpc.models.openRouter.useQuery(undefined, { staleTime: 60_000, retry: 2 });
   const builtInModels = trpc.models.builtIn.useQuery(undefined, { staleTime: 60_000, retry: 1 });
@@ -167,6 +162,7 @@ export default function ChatScreen() {
 
   useEffect(() => {
     setLoadedHistory("");
+    setConversationId(undefined);
     let active = true;
     Promise.all([AsyncStorage.getItem(historyKey(historyModel)), AsyncStorage.getItem(providerKeySelectionKey(historyModel))]).then(([stored, storedProviderKey]) => {
       if (!active) return;
@@ -265,50 +261,9 @@ export default function ChatScreen() {
     const result = await uploadFile.mutateAsync({ name: attachment.name, mimeType: attachment.mimeType, base64 });
     return { ...attachment, remoteUrl: result.url, extractedText: result.extractedText ?? undefined };
   };
-  const toggleRecording = async () => {
-    try {
-      if (recorderState.isRecording) {
-        await recorder.stop();
-        if (recorder.uri) {
-          const base64 = await FileSystem.readAsStringAsync(recorder.uri, { encoding: FileSystem.EncodingType.Base64 });
-          const uploaded = await uploadFile.mutateAsync({ name: "voice.m4a", mimeType: "audio/mp4", base64 });
-          const result = await transcribe.mutateAsync({ audioUrl: uploaded.url, language: "ar" });
-          setInput((current) => `${current}${current ? " " : ""}${result.text}`);
-        }
-      } else {
-        const permission = await requestRecordingPermissionsAsync();
-        if (!permission.granted) { Alert.alert("الصلاحية مطلوبة", "اسمح للتطبيق باستخدام الميكروفون."); return; }
-        await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-        await recorder.prepareToRecordAsync();
-        recorder.record();
-      }
-    } catch (error) {
-      Alert.alert("تعذر تسجيل الصوت", error instanceof Error ? error.message : "حاول مرة أخرى.");
-    }
-  };
   const copyMessage = async (text: string) => {
     await Clipboard.setStringAsync(text);
   };
-  const speakMessage = async (message: Message) => {
-    await Speech.stop();
-    if (speakingId === message.id) {
-      setSpeakingId(null);
-      return;
-    }
-    setSpeakingId(message.id);
-    Speech.speak(message.text, {
-      language: "ar-SA",
-      onDone: () => setSpeakingId(null),
-      onStopped: () => setSpeakingId(null),
-      onError: () => setSpeakingId(null),
-    });
-  };
-  useEffect(
-    () => () => {
-      void Speech.stop();
-    },
-    [],
-  );
 
   const sendMessage = async () => {
     const text = input.trim();
@@ -393,6 +348,7 @@ export default function ChatScreen() {
       }
       const response = await completeChat.mutateAsync({
         model: params.directModel || selectedRuntimeModel || undefined,
+        conversationId,
         providerKeyId: selectedProviderKeyId,
         useWebSearch: webSearchEnabled,
         deepThinking: deepThinkingEnabled,
@@ -408,6 +364,7 @@ export default function ChatScreen() {
             : { role: message.role, content: message.text },
         ),
       });
+      if (response.conversationId) setConversationId(response.conversationId);
       setMessages((current) => [
         ...current,
         {
@@ -587,17 +544,6 @@ export default function ChatScreen() {
                       color={colors.muted}
                     />
                   </Pressable>
-                  {item.role === "assistant" ? (
-                    <Pressable onPress={() => void speakMessage(item)}>
-                      <MaterialIcons
-                        name={
-                          speakingId === item.id ? "stop-circle" : "volume-up"
-                        }
-                        size={16}
-                        color={colors.muted}
-                      />
-                    </Pressable>
-                  ) : null}
                 </View>
               </View>
             </View>
@@ -716,14 +662,6 @@ export default function ChatScreen() {
               className="h-10 w-10 items-center justify-center rounded-[14px]"
             >
               <MaterialIcons name="attach-file" size={20} color="#0787B4" />
-            </Pressable>
-            <Pressable
-              onPress={() => void toggleRecording()}
-              disabled={localModelSelected}
-              style={({ pressed }) => [{ backgroundColor: recorderState.isRecording ? "#FFD8D8" : "#E6F8FD", opacity: localModelSelected ? 0.4 : 1 }, pressed && { opacity: 0.7 }]}
-              className="h-10 w-10 items-center justify-center rounded-[14px]"
-            >
-              <MaterialIcons name={recorderState.isRecording ? "stop" : "mic"} size={20} color={recorderState.isRecording ? "#C62828" : "#0787B4"} />
             </Pressable>
             <TextInput
               value={input}

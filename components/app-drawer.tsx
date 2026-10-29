@@ -141,11 +141,6 @@ export function AppDrawerShell({ children }: { children: ReactNode }) {
                   <View className="flex-row-reverse items-center"><MaterialIcons name="image" size={16} color={colors.primary} /><View className="mr-2 flex-1"><Text numberOfLines={1} className="text-right text-[10px] font-bold text-foreground">{id}</Text><Text className="mt-0.5 text-right text-[9px] text-muted">{model.access ?? "غير محدد"} · {model.dailyLimit ?? "حسب المزود"}</Text></View></View>
                 </Pressable>;
               })}
-              {!imageModels.data?.models?.length ? ["GPT Image", "Flux", "Stable Diffusion"].map((name) => (
-                <View key={`planned-image-${name}`} className="mb-1 mr-3 rounded-xl border px-3 py-2" style={{ borderColor: colors.border, backgroundColor: colors.surface, opacity: 0.68 }}>
-                  <View className="flex-row-reverse items-center"><MaterialIcons name="image" size={16} color={colors.muted} /><View className="mr-2 flex-1"><Text className="text-right text-[10px] font-bold text-foreground">{name}</Text><Text className="mt-0.5 text-right text-[9px] text-muted">قريبًا · يتطلب تفعيل مزود الصور</Text></View></View>
-                </View>
-              )) : null}
               <DrawerLink icon="smart-toy" label="النماذج المحلية" onPress={() => navigate("/(tabs)/local-models")} colors={colors} />
               <DrawerLink icon="language" label="أدوات الويب" onPress={() => navigate("/(tabs)/web-sites")} colors={colors} />
               <DrawerLink icon="settings" label="إعدادات التطبيق" onPress={() => navigate("/(tabs)/settings")} colors={colors} />

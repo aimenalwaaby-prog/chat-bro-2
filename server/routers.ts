@@ -587,15 +587,39 @@ export const appRouter = router({
           role: message.role,
           content: message.content,
         }));
+        let persistedConversationId = input.conversationId;
+        if (ctx.user) {
+          if (persistedConversationId && !(await db.getUserConversation(ctx.user.id, persistedConversationId))) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "لا تملك هذه المحادثة." });
+          }
+          if (!persistedConversationId) {
+            const firstUserMessage = input.messages.find((message) => message.role === "user");
+            const title = typeof firstUserMessage?.content === "string" ? firstUserMessage.content.slice(0, 80) : "محادثة جديدة";
+            const conversation = await db.createConversation(ctx.user.id, title || "محادثة جديدة", input.model);
+            persistedConversationId = conversation?.id;
+          }
+          const lastUserMessage = input.messages[input.messages.length - 1];
+          if (persistedConversationId && lastUserMessage?.role === "user") {
+            await db.saveMessage({ conversationId: persistedConversationId, role: "user", content: typeof lastUserMessage.content === "string" ? lastUserMessage.content : JSON.stringify(lastUserMessage.content), model: input.model });
+          }
+        }
+        const persistResult = async <T extends { content: string; model?: string | null; usage?: unknown }>(result: T) => {
+          const recorded = await record(result);
+          if (ctx.user && persistedConversationId) {
+            await db.saveMessage({ conversationId: persistedConversationId, role: "assistant", content: recorded.content, model: recorded.model });
+            await db.touchConversation(ctx.user.id, persistedConversationId);
+          }
+          return { ...recorded, conversationId: persistedConversationId ?? null };
+        };
         try {
-          if (userProviderKey) return record(await completeWithUserProvider(input.model, simple, userProviderKey.baseUrl, decryptProviderSecret(userProviderKey.encryptedApiKey), userProviderKey.modelPrefix));
+          if (userProviderKey) return persistResult(await completeWithUserProvider(input.model, simple, userProviderKey.baseUrl, decryptProviderSecret(userProviderKey.encryptedApiKey), userProviderKey.modelPrefix));
           const openRouterRoute = input.model?.startsWith("openrouter:") || (!input.model && Boolean(process.env.OPENROUTER_API_KEY));
           const shouldSearchFirst = Boolean(input.useWebSearch && !openRouterRoute);
           let routedMessages = messages;
           let routedSimple = simple;
           if (input.model?.startsWith("ollama:")) {
             const ollamaBase = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/$/, "");
-            return record(await completeWithOpenAICompatible("ollama", input.model, routedSimple, `${ollamaBase}/v1`, "ollama"));
+            return persistResult(await completeWithOpenAICompatible("ollama", input.model, routedSimple, `${ollamaBase}/v1`, "ollama"));
           }
           if (input.model?.startsWith("llama:")) throw new Error("هذا النموذج المحلي يعمل داخل التطبيق فقط.");
           if (shouldSearchFirst) {
@@ -604,21 +628,21 @@ export const appRouter = router({
             routedMessages = [searchSystemMessage, ...messages];
             routedSimple = [{ role: searchSystemMessage.role, content: searchSystemMessage.content }, ...simple];
           }
-          if (input.model?.startsWith("openrouter:")) return record(await completeWithOpenRouter(input.model, simple, input.useWebSearch, input.deepThinking));
-          if (input.model?.startsWith("gemini:")) return record(await completeWithGemini(input.model, routedSimple));
-          if (input.model?.startsWith("groq:")) return record(await completeWithGroq(input.model, routedSimple));
-          if (input.model?.startsWith("cloudflare:")) return record(await completeWithCloudflare(input.model, routedSimple));
-          if (input.model?.startsWith("anthropic:")) return record(await completeWithAnthropic(input.model, routedSimple));
-          if (input.model?.startsWith("gateway:")) return record(await completeWithGateway(input.model, routedSimple));
+          if (input.model?.startsWith("openrouter:")) return persistResult(await completeWithOpenRouter(input.model, simple, input.useWebSearch, input.deepThinking));
+          if (input.model?.startsWith("gemini:")) return persistResult(await completeWithGemini(input.model, routedSimple));
+          if (input.model?.startsWith("groq:")) return persistResult(await completeWithGroq(input.model, routedSimple));
+          if (input.model?.startsWith("cloudflare:")) return persistResult(await completeWithCloudflare(input.model, routedSimple));
+          if (input.model?.startsWith("anthropic:")) return persistResult(await completeWithAnthropic(input.model, routedSimple));
+          if (input.model?.startsWith("gateway:")) return persistResult(await completeWithGateway(input.model, routedSimple));
           if (input.model?.startsWith("builtin:")) {
             const response = await invokeLLM({ model: input.model.slice("builtin:".length), messages: routedMessages, maxTokens: 1200 });
             const content = response.choices[0]?.message?.content;
-            return record({ content: typeof content === "string" ? content : JSON.stringify(content ?? ""), model: response.model, usage: response.usage ?? null });
+            return persistResult({ content: typeof content === "string" ? content : JSON.stringify(content ?? ""), model: response.model, usage: response.usage ?? null });
           }
-          if (process.env.OPENROUTER_API_KEY && !input.model) return record(await completeWithOpenRouter("", simple, input.useWebSearch, input.deepThinking));
+          if (process.env.OPENROUTER_API_KEY && !input.model) return persistResult(await completeWithOpenRouter("", simple, input.useWebSearch, input.deepThinking));
           const response = await invokeLLM({ model: input.model, messages: routedMessages, maxTokens: 1200, ...(input.deepThinking ? { reasoning: { effort: "high" } } : {}) });
           const content = response.choices[0]?.message?.content;
-          return record({ content: typeof content === "string" ? content : JSON.stringify(content ?? ""), model: response.model, usage: response.usage ?? null });
+          return persistResult({ content: typeof content === "string" ? content : JSON.stringify(content ?? ""), model: response.model, usage: response.usage ?? null });
         } catch (error) {
           if (ctx.user) await db.recordUsage({ userId: ctx.user.id, model: input.model, provider: input.model?.split(":")[0] ?? "builtin", requestKind: input.useWebSearch ? "search" : "chat", outcome: "error", errorCode: error instanceof Error ? error.name : "UNKNOWN" }).catch(() => undefined);
           throw new TRPCError({ code: "BAD_GATEWAY", message: errorForClient(error) });

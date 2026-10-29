@@ -1,8 +1,6 @@
 import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Platform } from "react-native";
-import { useEffect, useState } from "react";
-import { listInstalledLocalModels } from "@/lib/local-runtime";
 
 import { HapticTab } from "@/components/haptic-tab";
 import { IconSymbol } from "@/components/ui/icon-symbol";
@@ -13,9 +11,6 @@ export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const bottomPadding = Platform.OS === "web" ? 10 : Math.max(insets.bottom, 8);
   const tabBarHeight = 62 + bottomPadding;
-  const [hasLocalModels, setHasLocalModels] = useState(false);
-  useEffect(() => { let active = true; listInstalledLocalModels().then((items) => active && setHasLocalModels(items.length > 0)); return () => { active = false; }; }, []);
-
   return (
     <Tabs
       screenOptions={{
@@ -45,9 +40,22 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="explore"
+        options={{
+          title: "استكشاف",
+          tabBarIcon: ({ color }) => (
+            <IconSymbol
+              size={22}
+              name="safari.fill"
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="chat"
         options={{
-          title: "محادثة",
+          title: "المحادثة",
           tabBarIcon: ({ color }) => (
             <IconSymbol
               size={22}
@@ -58,58 +66,25 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="models"
+        name="library"
         options={{
-          title: "النماذج",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol
-              size={22}
-              name="square.stack.3d.up.fill"
-              color={color}
-            />
-          ),
+          title: "المكتبة",
+          tabBarIcon: ({ color }) => <IconSymbol size={22} name="books.vertical.fill" color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="account"
+        options={{
+          title: "حسابي",
+          tabBarIcon: ({ color }) => <IconSymbol size={22} name="person.crop.circle.fill" color={color} />,
+        }}
+      />
+      <Tabs.Screen name="models" options={{ href: null }} />
       <Tabs.Screen name="model-library" options={{ href: null }} />
-      <Tabs.Screen
-        name="local-chat"
-        options={{
-          href: hasLocalModels ? "/local-chat" : null,
-          title: "محادثة محلية",
-          tabBarIcon: ({ color }) => <IconSymbol size={22} name="bubble.left.and.bubble.right.fill" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="local-models"
-        options={{
-          title: hasLocalModels ? "محلي" : "تنزيل محلي",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol
-              size={22}
-              name="square.stack.3d.up.fill"
-              color={color}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="web-sites"
-        options={{
-          title: "مواقع AI",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={22} name="globe" color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: "الإعدادات",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={22} name="gearshape.fill" color={color} />
-          ),
-        }}
-      />
+      <Tabs.Screen name="local-chat" options={{ href: null }} />
+      <Tabs.Screen name="local-models" options={{ href: null }} />
+      <Tabs.Screen name="web-sites" options={{ href: null }} />
+      <Tabs.Screen name="settings" options={{ href: null }} />
       <Tabs.Screen name="images" options={{ href: null }} />
       <Tabs.Screen name="model-repositories" options={{ href: null }} />
       <Tabs.Screen name="provider-keys" options={{ href: null }} />
