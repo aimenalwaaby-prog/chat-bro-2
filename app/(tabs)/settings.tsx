@@ -6,7 +6,8 @@ import { Alert, Image, Linking, Pressable, ScrollView, Switch, Text, TextInput, 
 import { ScreenContainer } from "@/components/screen-container";
 import { BrandHeader, SectionHeading } from "@/components/chatbro-ui";
 import { useColors } from "@/hooks/use-colors";
-import { checkServerConnection } from "@/lib/_core/api";
+import { checkServerConnection, getMe, logout } from "@/lib/_core/api";
+import { startOAuthLogin } from "@/constants/oauth";
 import * as Auth from "@/lib/_core/auth";
 import { chatBroModels, isModelAvailableToSelect } from "@/shared/chatbro-catalog";
 
@@ -30,6 +31,8 @@ export default function SettingsScreen() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [notifications, setNotifications] = useState(true);
   const [server, setServer] = useState<{ ok: boolean; latencyMs: number; url: string; capabilities?: Record<string, boolean> } | null>(null);
+  const [accountUser, setAccountUser] = useState<{ name: string | null; email: string | null } | null>(null);
+  const [authBusy, setAuthBusy] = useState(false);
 
   const openContactLink = async (url: string) => {
     try {
@@ -51,7 +54,18 @@ export default function SettingsScreen() {
       }
     });
     void checkServerConnection().then(setServer);
+    void getMe().then(setAccountUser).catch(() => setAccountUser(null));
   }, []);
+
+  const signInWithGoogle = async () => {
+    setAuthBusy(true);
+    try { await startOAuthLogin(); } finally { setAuthBusy(false); }
+  };
+
+  const signOut = async () => {
+    setAuthBusy(true);
+    try { await logout(); setAccountUser(null); } finally { setAuthBusy(false); }
+  };
 
   const selectedModelsLabel = useMemo(
     () => favoriteModels.length ? favoriteModels.join("، ") : "لم تختر نماذج بعد",
@@ -132,6 +146,18 @@ export default function SettingsScreen() {
     <ScreenContainer className="px-5 pt-4">
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 28 }}>
         <BrandHeader title="الإعدادات" eyebrow="CHAT BRO" />
+        <View className="mt-5 rounded-[22px] border bg-surface p-4" style={{ borderColor: colors.border }}>
+          <SectionHeading title="حسابك" />
+          {accountUser ? <>
+            <Text className="text-right text-[13px] font-bold text-foreground">{accountUser.name || "حساب Google"}</Text>
+            <Text className="mt-1 text-right text-[10px] text-muted">{accountUser.email || "تم تسجيل الدخول"}</Text>
+            <Text className="mt-2 text-right text-[10px] leading-5 text-muted">المحادثات المحفوظة مرتبطة بحسابك ويمكن استرجاعها عند العودة إلى النموذج نفسه.</Text>
+            <Pressable disabled={authBusy} onPress={() => void signOut()} className="mt-3 rounded-2xl border px-3 py-3" style={{ borderColor: colors.border }}><Text className="text-center text-[11px] font-bold text-primary">{authBusy ? "جارٍ التنفيذ…" : "تسجيل الخروج"}</Text></Pressable>
+          </> : <>
+            <Text className="text-right text-[11px] leading-5 text-muted">سجّل الدخول بحساب Google لحفظ كل محادثة مستقلة واسترجاعها من أي جهاز.</Text>
+            <Pressable disabled={authBusy} onPress={() => void signInWithGoogle()} className="mt-3 rounded-2xl bg-primary px-3 py-3"><Text className="text-center text-[11px] font-extrabold text-[#062034]">{authBusy ? "جارٍ فتح تسجيل الدخول…" : "تسجيل الدخول بحساب Google"}</Text></Pressable>
+          </>}
+        </View>
         <View className="mt-7 rounded-[25px] bg-[#0C7FA9] p-5">
           <View className="flex-row-reverse items-center">
             {profile?.imageUri ? (

@@ -45,8 +45,8 @@ type Message = {
   time: string;
   attachments?: Attachment[];
 };
-const historyKey = (model: string) =>
-  `chatbro:conversation:${encodeURIComponent(model)}`;
+const historyKey = (model: string, sessionId: string) =>
+  `chatbro:conversation:${encodeURIComponent(model)}:${sessionId}`;
 const providerKeySelectionKey = (model: string) =>
   `chatbro:conversation-provider-key:${encodeURIComponent(model)}`;
 const welcome = (model?: string): Message => ({
@@ -64,6 +64,7 @@ export default function ChatScreen() {
   const initialModel = params.model ?? "";
   const [selectedModel, setSelectedModel] = useState(initialModel);
   const [conversationId, setConversationId] = useState<number | undefined>();
+  const [localSessionId, setLocalSessionId] = useState(() => `${Date.now()}`);
   const [messages, setMessages] = useState<Message[]>([
     welcome(initialModel || undefined),
   ]);
@@ -77,6 +78,8 @@ export default function ChatScreen() {
   const [providerOpen, setProviderOpen] = useState<Record<string, boolean>>({});
   const [selectedProviderKeyId, setSelectedProviderKeyId] = useState<number | undefined>();
   const [deepThinkingEnabled, setDeepThinkingEnabled] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [archivedConversationId, setArchivedConversationId] = useState<number>();
   const [localModels, setLocalModels] = useState<InstalledLocalModel[]>([]);
   const [serverCapabilities, setServerCapabilities] = useState<Record<string, boolean> | null>(null);
   const completeChat = trpc.chat.complete.useMutation();
@@ -91,6 +94,11 @@ export default function ChatScreen() {
   const cloudflareModels = trpc.models.cloudflare.useQuery(undefined, { staleTime: 60_000, retry: 1 });
   const gatewayModels = trpc.models.gateways.useQuery(undefined, { staleTime: 60_000, retry: 1 });
   const providerKeys = trpc.providerKeys.list.useQuery(undefined, { staleTime: 60_000, retry: 0 });
+  const savedConversations = trpc.conversations.list.useQuery(undefined, { enabled: historyOpen, staleTime: 30_000, retry: 0 });
+  const archivedMessages = trpc.conversations.messages.useQuery(
+    { conversationId: archivedConversationId as number },
+    { enabled: Boolean(archivedConversationId), retry: 0 },
+  );
   const dynamicOpenRouterModels = useMemo<ChatBroModel[]>(() => (openRouterModels.data?.models ?? []).filter((model) => !model.outputModalities?.length || model.outputModalities.includes("text")).map((model) => {
     const candidate: ChatBroModel = {
       name: model.name, modelId: `openrouter:${model.id}`, provider: "OpenRouter", providerKey: "openrouter", icon: "hub",
@@ -149,6 +157,17 @@ export default function ChatScreen() {
   }, [cloudChatModels]);
   const selectedCatalogModel = cloudChatModels.find((model) => model.name === selectedModel);
   const selectedRuntimeModel = selectedCatalogModel?.modelId;
+  useEffect(() => {
+    if (!archivedMessages.data) return;
+    setMessages(archivedMessages.data.filter((item) => item.role === "user" || item.role === "assistant").map((item) => ({
+      id: `saved-${item.id}`,
+      role: item.role as "user" | "assistant",
+      text: item.content,
+      time: new Date(item.createdAt).toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit" }),
+    })));
+    setConversationId(archivedConversationId);
+    setHistoryOpen(false);
+  }, [archivedConversationId, archivedMessages.data]);
   useEffect(() => { let active = true; listInstalledLocalModels().then((items) => active && setLocalModels(items)); return () => { active = false; }; }, []);
   useEffect(() => {
     let active = true;
@@ -163,18 +182,12 @@ export default function ChatScreen() {
   useEffect(() => {
     setLoadedHistory("");
     setConversationId(undefined);
+    setLocalSessionId(`${Date.now()}`);
+    setMessages([welcome(selectedModel || undefined)]);
     let active = true;
-    Promise.all([AsyncStorage.getItem(historyKey(historyModel)), AsyncStorage.getItem(providerKeySelectionKey(historyModel))]).then(([stored, storedProviderKey]) => {
+    AsyncStorage.getItem(providerKeySelectionKey(historyModel)).then((storedProviderKey) => {
       if (!active) return;
       setSelectedProviderKeyId(storedProviderKey ? Number(storedProviderKey) : undefined);
-      try {
-        const parsed = stored ? (JSON.parse(stored) as Message[]) : [];
-        setMessages(
-          parsed.length ? parsed : [welcome(selectedModel || undefined)],
-        );
-      } catch {
-        setMessages([welcome(selectedModel || undefined)]);
-      }
       setLoadedHistory(historyModel);
     });
     return () => {
@@ -187,10 +200,10 @@ export default function ChatScreen() {
   useEffect(() => {
     if (loadedHistory === historyModel && messages.length)
       void AsyncStorage.setItem(
-        historyKey(historyModel),
+        historyKey(historyModel, localSessionId),
         JSON.stringify(messages),
       );
-  }, [messages, historyModel, loadedHistory]);
+  }, [messages, historyModel, loadedHistory, localSessionId]);
   useEffect(() => {
     if (params.prompt) setInput(params.prompt);
   }, [params.prompt]);
@@ -406,6 +419,22 @@ export default function ChatScreen() {
         className="flex-1"
       >
         <BrandHeader title="محادثاتك" eyebrow="CHAT BRO" />
+        <View className="mt-3 flex-row-reverse gap-2">
+          <Pressable onPress={() => { setConversationId(undefined); setMessages([welcome(selectedModel || undefined)]); setLocalSessionId(`${Date.now()}`); }} className="flex-1 flex-row-reverse items-center justify-center gap-2 rounded-2xl bg-primary px-3 py-3">
+            <MaterialIcons name="add" size={18} color="#062034" />
+            <Text className="text-[11px] font-extrabold text-[#062034]">محادثة جديدة</Text>
+          </Pressable>
+          <Pressable onPress={() => setHistoryOpen((open) => !open)} className="flex-1 flex-row-reverse items-center justify-center gap-2 rounded-2xl border px-3 py-3" style={{ borderColor: colors.border, backgroundColor: colors.surface }}>
+            <MaterialIcons name="history" size={18} color={colors.primary} />
+            <Text className="text-[11px] font-extrabold text-primary">المحفوظة</Text>
+          </Pressable>
+        </View>
+        {historyOpen ? <View className="mt-2 rounded-2xl border p-2" style={{ borderColor: colors.border, backgroundColor: colors.surface }}>
+          <Text className="px-2 py-1 text-right text-[10px] font-bold text-muted">محادثات هذا النموذج المحفوظة في حسابك</Text>
+          {savedConversations.error ? <Text className="px-2 py-2 text-right text-[10px] text-muted">سجّل الدخول لرؤية المحادثات المحفوظة على الخادم.</Text> : null}
+          {(savedConversations.data ?? []).filter((item) => !selectedRuntimeModel || item.model === selectedRuntimeModel).slice(0, 8).map((item) => <Pressable key={item.id} onPress={() => setArchivedConversationId(item.id)} className="mt-1 rounded-xl border px-3 py-2" style={{ borderColor: colors.border }}><Text numberOfLines={1} className="text-right text-[11px] font-bold text-foreground">{item.title}</Text><Text className="mt-1 text-right text-[9px] text-muted">{item.model ?? "المساعد العام"} · {new Date(item.updatedAt).toLocaleDateString("ar-SA")}</Text></Pressable>)}
+          {savedConversations.isSuccess && !(savedConversations.data ?? []).some((item) => !selectedRuntimeModel || item.model === selectedRuntimeModel) ? <Text className="px-2 py-2 text-right text-[10px] text-muted">لا توجد محادثات محفوظة لهذا النموذج بعد.</Text> : null}
+        </View> : null}
         <View
           className="mt-4 rounded-[18px] border bg-surface px-3 py-2.5"
           style={{ borderColor: colors.border }}
