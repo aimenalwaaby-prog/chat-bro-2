@@ -64,13 +64,13 @@ function fileKind(path: string) {
   if (/readme|config|tokenizer|manifest|requirements|package\.json/i.test(lower)) return "metadata";
   return "file";
 }
-function capabilities(source: ModelSourceKind, files: RepoFile[]) {
+function capabilities(source: ModelSourceKind, files: RepoFile[], modelId?: string) {
   const hasOllama = Boolean(process.env.OLLAMA_BASE_URL);
   const hasArchive = files.some((file) => ["apk", "archive", "gguf", "safetensors", "onnx"].includes(fileKind(file.path)));
-  if (source === "ollama") return { canSync: true, canInstall: hasOllama, canRun: hasOllama, installModes: hasOllama ? ["ollama-pull"] : ["ollama-pull-unconfigured"] };
-  if (["openai-compatible", "openrouter", "together", "groq"].includes(source)) return { canSync: true, canInstall: false, canRun: true, installModes: ["remote-model"] };
+  if (source === "ollama") return { canSync: true, canInstall: hasOllama, canRun: Boolean(hasOllama && modelId && files.some((file) => file.path === `ollama/${modelId}`)), installModes: hasOllama ? ["ollama-pull"] : ["ollama-pull-unconfigured"] };
+  if (["openai-compatible", "openrouter", "together", "groq"].includes(source)) return { canSync: true, canInstall: false, canRun: false, installModes: [] };
   if (["replicate", "civitai", "kaggle", "nvidia-ngc", "docker-hub"].includes(source)) return { canSync: true, canInstall: false, canRun: false, installModes: [] };
-  if (source === "huggingface") return { canSync: true, canInstall: hasArchive, canRun: Boolean(process.env.HF_INFERENCE_TOKEN || process.env.HF_TOKEN), installModes: hasArchive ? ["download-artifacts", "inference-api"] : ["inference-api"] };
+  if (source === "huggingface") return { canSync: true, canInstall: hasArchive, canRun: false, installModes: hasArchive ? ["download-artifacts"] : [] };
   return { canSync: true, canInstall: hasArchive, canRun: false, installModes: hasArchive ? ["download-artifacts"] : [] };
 }
 
@@ -162,7 +162,7 @@ export async function inspectModelRepository(source: ModelSourceKind, reference:
     files = [];
   }
   const manifests = files.filter((file) => ["metadata", "apk", "archive", "gguf", "safetensors", "onnx"].includes(fileKind(file.path))).map((file) => ({ path: file.path, kind: fileKind(file.path), size: file.size, readable: ["metadata", "apk", "archive"].includes(fileKind(file.path)) }));
-  return { normalized, description, defaultBranch, files, manifests, capabilities: capabilities(source, files), metadata };
+  return { normalized, description, defaultBranch, files, manifests, capabilities: capabilities(source, files, normalized.modelId), metadata };
 }
 
 async function fetchLimited(url: string, source: ModelSourceKind) {
@@ -199,23 +199,35 @@ export async function syncRepository(inspection: RepositoryInspection) {
 }
 
 export async function installRepository(inspection: RepositoryInspection, mode: string) {
+  if (!inspection.capabilities.installModes.includes(mode)) {
+    throw new Error("طريقة التثبيت غير مدعومة لهذا المصدر بحسب نتيجة الفحص.");
+  }
+  if (mode === "ollama-pull-unconfigured") {
+    throw new Error("لم يتم إعداد OLLAMA_BASE_URL على الخادم؛ لم يبدأ التنزيل.");
+  }
   if (inspection.normalized.source === "ollama" && mode === "ollama-pull") {
     const base = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/$/, "");
     const response = await fetch(`${base}/api/pull`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: inspection.normalized.modelId, stream: false }), signal: AbortSignal.timeout(30 * 60_000) });
     if (!response.ok) throw new Error(`فشل تثبيت نموذج Ollama (${response.status}).`);
-    return { mode, installed: true, runtime: "ollama", model: inspection.normalized.modelId, result: await response.json() };
+    const result = await response.json() as { error?: unknown };
+    if (result.error) throw new Error("أبلغ Ollama عن خطأ أثناء تنزيل النموذج.");
+    const verification = await fetch(`${base}/api/show`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: inspection.normalized.modelId }), signal: AbortSignal.timeout(30_000) });
+    if (!verification.ok) throw new Error("اكتمل طلب Ollama لكن تعذر التحقق من وجود النموذج؛ لم يُسجل كمثبّت.");
+    const verifiedModel = await verification.json() as { error?: unknown; modelfile?: string };
+    if (verifiedModel.error) throw new Error("لم يعثر Ollama على النموذج بعد التنزيل؛ لم يُسجل كمثبّت.");
+    return { mode, installed: true, runtime: "ollama", model: inspection.normalized.modelId, result, verified: true };
   }
-  if (["openai-compatible", "openrouter", "together", "groq"].includes(inspection.normalized.source) && mode === "remote-model") return { mode, installed: true, runtime: inspection.normalized.source, endpoint: inspection.normalized.url, model: inspection.normalized.modelId, models: inspection.files.map((file) => file.path.replace(/^models\//, "")) };
-  if (mode === "inference-api" && inspection.normalized.source === "huggingface") return { mode, installed: true, runtime: "huggingface-inference", model: inspection.normalized.modelId };
   if (mode === "download-artifacts") {
     const candidates = inspection.files.filter((file) => file.downloadUrl && ["metadata", "gguf", "safetensors", "onnx", "archive", "apk"].includes(fileKind(file.path))).slice(0, 5);
+    if (candidates.length === 0) throw new Error("لم يعثر الفحص على ملفات قابلة للتنزيل؛ لم تُسجل عملية تثبيت.");
     const downloaded: Array<{ path: string; url: string; size: number }> = [];
     for (const file of candidates) {
       const { data, mimeType } = await fetchLimited(file.downloadUrl!, inspection.normalized.source);
       const stored = await storagePut(`repositories/${Date.now()}-${file.path.split("/").pop()}`, data, mimeType);
       downloaded.push({ path: file.path, url: stored.url, size: data.length });
     }
-    return { mode, installed: true, runtime: "artifact-storage", downloaded };
+    if (downloaded.length === 0) throw new Error("لم يتم تنزيل أي ملف؛ لم تُسجل عملية تثبيت.");
+    return { mode, installed: false, filesDownloaded: true, runtime: "artifact-storage", downloaded, note: "تم حفظ الملفات في التخزين؛ الحفظ لا يعني تثبيت النموذج أو التحقق من قابلية تشغيله." };
   }
   throw new Error("طريقة التثبيت غير مدعومة لهذا المصدر أو لم يتم إعداد runtime مناسب.");
 }
