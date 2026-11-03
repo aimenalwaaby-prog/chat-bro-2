@@ -170,7 +170,7 @@ export default function SettingsScreen() {
               <Text className="mt-1 text-[17px] font-extrabold text-white text-right">{profile?.name || "أنشئ ملفك الشخصي"}</Text>
               {profile ? <Text className="mt-1 text-[11px] text-[#D8FAFF] text-right">{profile.profileType} · {selectedModelsLabel}</Text> : null}
             </View>
-            <MaterialIcons name={profile ? "verified-user" : "account-circle"} size={19} color="#8FF4FF" />
+            <MaterialIcons name="account-circle" size={19} color="#8FF4FF" />
           </View>
           <Text className="mt-4 text-right text-[10px] leading-4 text-[#D8FAFF]">بيانات الملف الشخصي اختيارية، وتُحفظ محليًا على هذا الجهاز فقط.</Text>
           <Pressable onPress={profile ? startEditing : () => setEditing(true)} className="mt-4 rounded-2xl bg-white px-3 py-2.5">

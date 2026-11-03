@@ -64,7 +64,7 @@ export default function ModelsScreen() {
         providerKey: "openrouter",
         icon: "hub",
         tone: model.prompt === "0" && model.completion === "0" ? "full" : "paid",
-        status: model.prompt === "0" && model.completion === "0" ? "مجاني" : "مدفوع",
+        status: model.prompt === "0" && model.completion === "0" ? "سعر صفري في الفهرس" : "مسعر في الفهرس",
         limit: model.prompt === "0" && model.completion === "0" ? (model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب الحصة المجانية") : "يتطلب رصيدًا أو اشتراكًا",
         category: "محادثة",
         requiresKey: true,
@@ -73,7 +73,6 @@ export default function ModelsScreen() {
         inputModalities: model.inputModalities ?? [],
         outputModalities: model.outputModalities ?? ["text"],
         supportsVision: model.inputModalities?.includes("image"),
-        verified: true,
         sourceUrl: "https://openrouter.ai/models",
       };
       return { ...candidate, types: [...new Set([...getModelTypeTags(candidate), ...searchTag])] };
@@ -85,7 +84,7 @@ export default function ModelsScreen() {
       providerKey: "builtIn",
       icon: "auto-awesome",
       tone: "limited",
-      status: "متاح من الخادم",
+      status: "مدرج في فهرس الخادم",
       limit: "حسب إعداد المزود",
       category: "محادثة",
       requiresKey: false,
@@ -94,7 +93,6 @@ export default function ModelsScreen() {
       inputModalities: ["text"],
       outputModalities: ["text"],
       types: ["محادثة", ...searchTag, ...(/code|coder|program/i.test(model.id) ? ["برمجة"] : [])],
-      verified: true,
     }));
     const anthropic = (anthropicModels.data?.models ?? []).map((model): ChatBroModel => ({
       name: `${model.name} · Anthropic`,
@@ -102,8 +100,8 @@ export default function ModelsScreen() {
       provider: "Anthropic · مباشر",
       providerKey: "anthropic",
       icon: "auto-awesome",
-      tone: "paid",
-      status: "مدفوع",
+      tone: "limited",
+      status: "مدرج في فهرس Anthropic",
       limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Anthropic",
       category: "محادثة",
       requiresKey: true,
@@ -113,23 +111,22 @@ export default function ModelsScreen() {
       outputModalities: ["text"],
       supportsVision: model.supportsVision,
       types: ["محادثة", ...(model.supportsVision ? ["فهم الصور"] : []), ...searchTag],
-      verified: true,
     }));
     const gemini = (geminiModels.data?.models ?? []).map((model): ChatBroModel => ({
       name: `${model.name} · Gemini`, modelId: `gemini:${model.id}`, provider: "Google Gemini · مباشر", providerKey: "gemini", icon: "auto-awesome",
-      tone: "paid", status: "مدفوع", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Google", category: "محادثة",
-      requiresKey: true, localOnly: false, runtime: "cloud", inputModalities: model.supportsVision ? ["text", "image"] : ["text"], outputModalities: ["text"], supportsVision: model.supportsVision, verified: true,
+      tone: "limited", status: "مدرج في فهرس Google", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Google", category: "محادثة",
+      requiresKey: true, localOnly: false, runtime: "cloud", inputModalities: model.supportsVision ? ["text", "image"] : ["text"], outputModalities: ["text"], supportsVision: model.supportsVision,
       types: ["محادثة", ...(model.supportsVision ? ["فهم الصور"] : []), ...searchTag],
     }));
     const groq = (groqModels.data?.models ?? []).map((model): ChatBroModel => ({
       name: `${model.name} · Groq`, modelId: `groq:${model.id}`, provider: "Groq · مباشر", providerKey: "groq", icon: "speed",
-      tone: "paid", status: "مدفوع", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Groq", category: "محادثة",
-      requiresKey: true, localOnly: false, runtime: "cloud", inputModalities: ["text"], outputModalities: ["text"], verified: true, types: ["محادثة", "برمجة", ...searchTag],
+      tone: "limited", status: "مدرج في فهرس Groq", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Groq", category: "محادثة",
+      requiresKey: true, localOnly: false, runtime: "cloud", inputModalities: ["text"], outputModalities: ["text"], types: ["محادثة", "برمجة", ...searchTag],
     }));
     const cloudflare = (cloudflareModels.data?.models ?? []).map((model): ChatBroModel => ({
       name: `${model.name} · Cloudflare`, modelId: `cloudflare:${model.id}`, provider: "Cloudflare Workers AI", providerKey: "cloudflare", icon: "cloud",
-      tone: "paid", status: "مدفوع", limit: "حسب حساب Cloudflare", category: "محادثة", requiresKey: true, localOnly: false, runtime: "cloud",
-      inputModalities: ["text"], outputModalities: ["text"], verified: true, types: ["محادثة", "برمجة", ...searchTag],
+      tone: "limited", status: "مدرج في فهرس Cloudflare", limit: "حسب حساب Cloudflare", category: "محادثة", requiresKey: true, localOnly: false, runtime: "cloud",
+      inputModalities: ["text"], outputModalities: ["text"], types: ["محادثة", "برمجة", ...searchTag],
     }));
     const gatewayProviderKey = (provider: string): NonNullable<ChatBroModel["providerKey"]> => {
       const normalized = provider.toLowerCase();
@@ -149,9 +146,9 @@ export default function ModelsScreen() {
         provider: `بوابة · ${model.provider}`,
         providerKey: gatewayProviderKey(model.provider),
         icon: "hub",
-        tone: "paid",
-        status: "مدفوع",
-        limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز · يتطلب رصيدًا` : "يتطلب رصيدًا أو اشتراكًا",
+        tone: "limited",
+        status: "مدرج في فهرس البوابة",
+        limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز · وفق المزود` : "وفق شروط المزود",
         category: "محادثة",
         requiresKey: true,
         localOnly: false,
@@ -159,7 +156,6 @@ export default function ModelsScreen() {
         inputModalities: model.inputModalities ?? ["text"],
         outputModalities: model.outputModalities ?? ["text"],
         supportsVision: model.inputModalities?.includes("image"),
-        verified: true,
       };
       return { ...candidate, types: [...new Set([...getModelTypeTags(candidate), ...searchTag])] };
     });

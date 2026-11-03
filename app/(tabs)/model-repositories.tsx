@@ -40,7 +40,7 @@ export default function ModelRepositoriesScreen() {
   const add = trpc.catalog.addSource.useMutation({ onSuccess: () => { void saved.refetch(); Alert.alert("تمت الإضافة", "تم حفظ المصدر في قائمة المستودعات. يمكنك الآن مزامنته وتثبيت ما يدعمه."); } });
   const saveModel = trpc.catalog.saveModel.useMutation({ onSuccess: () => { void modelLibrary.refetch(); Alert.alert("أضيف إلى المكتبة", "تم حفظ النموذج في مكتبتك. الحفظ لا يعني تنزيل الأوزان أو تفعيل التشغيل."); } });
   const sync = trpc.catalog.sync.useMutation({ onSuccess: () => { void saved.refetch(); Alert.alert("تمت المزامنة", "تم تحديث ملفات المصدر وبياناته الوصفية."); } });
-  const install = trpc.catalog.install.useMutation({ onSuccess: () => { void saved.refetch(); Alert.alert("اكتملت العملية", "سُجلت العملية بحسب طريقة التثبيت. راجع الحالة ونوع التشغيل؛ هذا لا يثبت وحده أن النموذج قابل للتشغيل على هذا الجهاز."); } });
+  const install = trpc.catalog.install.useMutation({ onSuccess: (result) => { void saved.refetch(); const verifiedInstalled = result?.status === "installed" && Boolean(result.installedAt); Alert.alert(verifiedInstalled ? "تم التثبيت والتحقق" : "لم يُسجل كتثبيت", verifiedInstalled ? "تحقق الخادم من وجود النموذج بعد التثبيت." : `الحالة الحالية: ${result?.status ?? "غير متاحة"}. تسجيل مسار بعيد أو حفظ ملفات لا يعني تثبيت نموذج أو التحقق من تشغيله.`); } });
   const removeSource = trpc.catalog.removeSource.useMutation({ onSuccess: () => void saved.refetch() });
   const readFile = trpc.catalog.readFile.useMutation({ onSuccess: (result) => Alert.alert(`محتوى ${result.path}`, result.text.slice(0, 7000) + (result.text.length > 7000 ? "\n…" : "")) });
   const inspectReference = (value = reference, selectedSource = source) => {

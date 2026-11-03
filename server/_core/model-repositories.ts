@@ -214,7 +214,7 @@ export async function installRepository(inspection: RepositoryInspection, mode: 
     const verification = await fetch(`${base}/api/show`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: inspection.normalized.modelId }), signal: AbortSignal.timeout(30_000) });
     if (!verification.ok) throw new Error("اكتمل طلب Ollama لكن تعذر التحقق من وجود النموذج؛ لم يُسجل كمثبّت.");
     const verifiedModel = await verification.json() as { error?: unknown; modelfile?: string };
-    if (verifiedModel.error) throw new Error("لم يعثر Ollama على النموذج بعد التنزيل؛ لم يُسجل كمثبّت.");
+    if (verifiedModel.error || typeof verifiedModel.modelfile !== "string" || !verifiedModel.modelfile.trim()) throw new Error("لم يعثر Ollama على بيانات النموذج بعد التنزيل؛ لم يُسجل كمثبّت.");
     return { mode, installed: true, runtime: "ollama", model: inspection.normalized.modelId, result, verified: true };
   }
   if (mode === "download-artifacts") {

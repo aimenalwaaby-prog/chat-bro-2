@@ -107,41 +107,41 @@ export default function ChatScreen() {
     const candidate: ChatBroModel = {
       name: model.name, modelId: `openrouter:${model.id}`, provider: "OpenRouter", providerKey: "openrouter", icon: "hub",
       tone: model.prompt === "0" && model.completion === "0" ? "full" : "limited",
-      status: model.prompt === "0" && model.completion === "0" ? "مجاني" : "متاح",
+      status: model.prompt === "0" && model.completion === "0" ? "سعر صفري في الفهرس" : "مسعر في الفهرس",
       limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب المزود", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway",
-      inputModalities: model.inputModalities ?? [], outputModalities: model.outputModalities ?? ["text"], supportsVision: model.inputModalities?.includes("image"), verified: true,
+      inputModalities: model.inputModalities ?? [], outputModalities: model.outputModalities ?? ["text"], supportsVision: model.inputModalities?.includes("image"),
     };
     return { ...candidate, types: getModelTypeTags(candidate) };
   }), [openRouterModels.data]);
   const dynamicBuiltInModels = useMemo<ChatBroModel[]>(() => (builtInModels.data?.models ?? []).map((model) => ({
     name: model.name, modelId: `builtin:${model.id}`, provider: `الخادم المدمج · ${model.provider}`, providerKey: "builtIn", icon: "auto-awesome", tone: "limited",
-    status: "متاح من الخادم", limit: "حسب إعداد المزود", category: "محادثة", requiresKey: false, localOnly: false, runtime: "cloud", inputModalities: ["text"], outputModalities: ["text"], types: ["محادثة"], verified: true,
+    status: "مدرج في فهرس الخادم", limit: "حسب إعداد المزود", category: "محادثة", requiresKey: false, localOnly: false, runtime: "cloud", inputModalities: ["text"], outputModalities: ["text"], types: ["محادثة"],
   })), [builtInModels.data]);
   const dynamicGeminiModels = useMemo<ChatBroModel[]>(() => (geminiModels.data?.models ?? []).map((model) => ({
     name: `${model.name} · Gemini`, modelId: `gemini:${model.id}`, provider: "Google Gemini · مباشر", providerKey: "gemini", icon: "auto-awesome", tone: "limited",
-    status: "متاح من Gemini", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Google", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway",
-    inputModalities: model.supportsVision ? ["text", "image"] : ["text"], outputModalities: ["text"], supportsVision: model.supportsVision, verified: true, types: ["محادثة", ...(model.supportsVision ? ["فهم الصور"] : [])],
+    status: "مدرج في فهرس Gemini", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Google", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway",
+    inputModalities: model.supportsVision ? ["text", "image"] : ["text"], outputModalities: ["text"], supportsVision: model.supportsVision, types: ["محادثة", ...(model.supportsVision ? ["فهم الصور"] : [])],
   })), [geminiModels.data]);
   const dynamicGroqModels = useMemo<ChatBroModel[]>(() => (groqModels.data?.models ?? []).map((model) => ({
     name: `${model.name} · Groq`, modelId: `groq:${model.id}`, provider: "Groq · مباشر", providerKey: "groq", icon: "speed", tone: "limited",
-    status: "متاح من Groq", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Groq", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway",
-    inputModalities: ["text"], outputModalities: ["text"], supportsVision: false, verified: true, types: ["محادثة", "برمجة"],
+    status: "مدرج في فهرس Groq", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Groq", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway",
+    inputModalities: ["text"], outputModalities: ["text"], supportsVision: false, types: ["محادثة", "برمجة"],
   })), [groqModels.data]);
   const dynamicCloudflareModels = useMemo<ChatBroModel[]>(() => (cloudflareModels.data?.models ?? []).map((model) => ({
     name: `${model.name} · Cloudflare`, modelId: `cloudflare:${model.id}`, provider: "Cloudflare Workers AI", providerKey: "cloudflare", icon: "cloud", tone: "limited",
-    status: "متاح من Cloudflare", limit: "حسب حساب Cloudflare", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway",
-    inputModalities: ["text"], outputModalities: ["text"], supportsVision: false, verified: true, types: ["محادثة", "برمجة"],
+    status: "مدرج في فهرس Cloudflare", limit: "حسب حساب Cloudflare", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway",
+    inputModalities: ["text"], outputModalities: ["text"], supportsVision: false, types: ["محادثة", "برمجة"],
   })), [cloudflareModels.data]);
   const dynamicAnthropicModels = useMemo<ChatBroModel[]>(() => (anthropicModels.data?.models ?? []).map((model) => ({
     name: `${model.name} · Anthropic`, modelId: `anthropic:${model.id}`, provider: "Anthropic · مباشر", providerKey: "anthropic", icon: "auto-awesome", tone: "limited",
-    status: "متاح من Anthropic", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Anthropic", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway", inputModalities: model.supportsVision ? ["text", "image"] : ["text"], outputModalities: ["text"], types: ["محادثة", ...(model.supportsVision ? ["فهم الصور"] : [])], supportsVision: model.supportsVision, verified: true,
+    status: "مدرج في فهرس Anthropic", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب حساب Anthropic", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway", inputModalities: model.supportsVision ? ["text", "image"] : ["text"], outputModalities: ["text"], types: ["محادثة", ...(model.supportsVision ? ["فهم الصور"] : [])], supportsVision: model.supportsVision,
   })), [anthropicModels.data]);
   const dynamicGatewayModels = useMemo<ChatBroModel[]>(() => (gatewayModels.data?.models ?? []).filter((model) => !model.outputModalities?.length || model.outputModalities.includes("text")).map((model) => {
     const providerName = model.provider.toLowerCase();
     const providerKey: ChatBroModel["providerKey"] = providerName.includes("mistral") ? "mistral" : providerName.includes("hugging") ? "huggingface" : providerName.includes("deepinfra") ? "deepinfra" : providerName.includes("nvidia") ? "nvidia" : providerName.includes("fireworks") ? "fireworks" : providerName.includes("replicate") ? "replicate" : providerName.includes("fal") ? "fal" : "gateway";
     return {
     name: `${model.name} · ${model.provider}`, modelId: model.id, provider: model.provider, providerKey, icon: "hub", tone: "limited",
-    status: "متاح من البوابة", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب البوابة", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway", inputModalities: model.inputModalities ?? [], outputModalities: model.outputModalities ?? ["text"], supportsVision: model.inputModalities?.includes("image"), verified: true,
+    status: "مدرج في فهرس البوابة", limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب البوابة", category: "محادثة", requiresKey: true, localOnly: false, runtime: "gateway", inputModalities: model.inputModalities ?? [], outputModalities: model.outputModalities ?? ["text"], supportsVision: model.inputModalities?.includes("image"),
   }; }), [gatewayModels.data]);
   const cloudChatModels = useMemo(() => {
     const liveModels = [...dynamicBuiltInModels, ...dynamicGeminiModels, ...dynamicGroqModels, ...dynamicCloudflareModels, ...dynamicAnthropicModels, ...dynamicGatewayModels, ...dynamicOpenRouterModels];

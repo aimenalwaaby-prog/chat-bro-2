@@ -15,7 +15,6 @@ export type ChatBroModel = {
   sourceUrl?: string;
   installCommand?: string;
   supportsVision?: boolean;
-  verified?: boolean;
   providerKey?: "chatbro" | "builtIn" | "openrouter" | "anthropic" | "gemini" | "groq" | "cloudflare" | "gateway" | "mistral" | "huggingface" | "deepinfra" | "nvidia" | "fireworks" | "replicate" | "fal" | "local";
   inputModalities?: string[];
   outputModalities?: string[];
@@ -36,14 +35,13 @@ const cloud = (
   provider,
   icon,
   tone,
-  status: "متاح عبر الخادم",
+  status: "مسار الخادم المهيأ",
   limit: "حسب إعداد الخادم",
   category,
   requiresKey: false,
   localOnly: false,
   runtime: "cloud",
   supportsVision,
-  verified: true,
   providerKey: "chatbro",
   inputModalities: ["text"],
   outputModalities: ["text"],
