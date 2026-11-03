@@ -199,6 +199,17 @@ export async function createUserProviderKey(input: {
   return rows.find((row) => row.id === id);
 }
 
+export async function replaceUserProviderKeySecret(userId: number, id: number, encryptedApiKey: string) {
+  const db = await getDb();
+  if (!db) throw new Error("DATABASE_URL غير مهيأ على خادم Chat Bro؛ لم يُستبدل المفتاح.");
+  const owner = await db.select({ id: providerKeys.id }).from(providerKeys)
+    .where(and(eq(providerKeys.userId, userId), eq(providerKeys.id, id))).limit(1);
+  if (!owner.length) return undefined;
+  await db.update(providerKeys).set({ encryptedApiKey, updatedAt: new Date() })
+    .where(and(eq(providerKeys.userId, userId), eq(providerKeys.id, id)));
+  return (await listUserProviderKeys(userId)).find((row) => row.id === id);
+}
+
 export async function getUserProviderKey(userId: number, id: number) {
   const db = await getDb();
   if (!db) return undefined;
@@ -320,6 +331,30 @@ export async function createAttachment(input: { userId: number; conversationId?:
   const { attachments } = await import("../drizzle/schema");
   const result = await db.insert(attachments).values({ ...input, conversationId: input.conversationId ?? null, status: input.status ?? "ready", extractedText: input.extractedText ?? null });
   return Number(result[0].insertId);
+}
+
+export async function listUserAttachments(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DATABASE_URL غير مهيأ على خادم Chat Bro؛ لا يمكن تحميل الملفات.");
+  const { attachments } = await import("../drizzle/schema");
+  return db.select({
+    id: attachments.id,
+    conversationId: attachments.conversationId,
+    fileName: attachments.fileName,
+    mimeType: attachments.mimeType,
+    sizeBytes: attachments.sizeBytes,
+    status: attachments.status,
+    createdAt: attachments.createdAt,
+  }).from(attachments).where(eq(attachments.userId, userId)).orderBy(desc(attachments.createdAt)).limit(500);
+}
+
+export async function getUserAttachment(userId: number, id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DATABASE_URL غير مهيأ على خادم Chat Bro؛ لا يمكن فتح الملف.");
+  const { attachments } = await import("../drizzle/schema");
+  const rows = await db.select().from(attachments)
+    .where(and(eq(attachments.userId, userId), eq(attachments.id, id))).limit(1);
+  return rows[0];
 }
 
 export async function listUserModelSources(userId: number) {

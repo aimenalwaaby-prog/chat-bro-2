@@ -5,7 +5,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { processFile } from "./fileProcessing";
-import { storagePut } from "./storage";
+import { storageGetSignedUrl, storagePut } from "./storage";
 import { generateImage, generateImageWithCustomProvider, listImageModels } from "./_core/imageGeneration";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import * as db from "./db";
@@ -15,6 +15,7 @@ import { assertUsageAvailable, enforceUsage, getSubscriptionConfig, getUsagePoli
 import { decryptProviderSecret, encryptProviderSecret } from "./_core/user-key-vault";
 import { modelSourceInput, modelSourceKinds, normalizeModelSource } from "../shared/model-sources";
 import { inspectModelRepository, installRepository, readRepositoryFile, syncRepository } from "./_core/model-repositories";
+import { getOwnedAttachmentDownload } from "./_core/attachment-access";
 
 async function generateImageViaMediaService(input: Parameters<typeof generateImage>[0]) {
   const baseUrl = process.env.IMAGE_SERVICE_URL?.replace(/\/$/, "");
@@ -386,8 +387,7 @@ async function completeWithGateway(model: string, messages: SimpleMessage[]) {
     },
   );
   if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(`Model gateway request failed: ${response.status}${detail ? ` - ${detail.slice(0, 300)}` : ""}`);
+    throw new Error(`Model gateway request failed: ${response.status}`);
   }
   const payload = (await response.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
@@ -416,6 +416,11 @@ export const appRouter = router({
     })).mutation(async ({ ctx, input }) => {
       const created = await db.createUserProviderKey({ ...input, userId: ctx.user.id, encryptedApiKey: encryptProviderSecret(input.apiKey) });
       return created;
+    }),
+    replaceSecret: protectedProcedure.input(z.object({ id: z.number().int().positive(), apiKey: z.string().trim().min(8).max(500) })).mutation(async ({ ctx, input }) => {
+      const updated = await db.replaceUserProviderKeySecret(ctx.user.id, input.id, encryptProviderSecret(input.apiKey));
+      if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "المفتاح غير موجود في حسابك." });
+      return updated;
     }),
     remove: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ ctx, input }) => db.deleteUserProviderKey(ctx.user.id, input.id)),
   }),
@@ -500,7 +505,8 @@ export const appRouter = router({
       try {
         const inspection = await inspectModelRepository(saved.source as Parameters<typeof inspectModelRepository>[0], saved.reference);
         const result = await installRepository(inspection, input.mode);
-        return db.updateModelSource(saved.id, ctx.user.id, { status: "installed", installedAt: new Date(), metadataJson: JSON.stringify(result).slice(0, 500_000), lastError: null });
+        const verifiedInstalled = result.installed === true;
+        return db.updateModelSource(saved.id, ctx.user.id, { status: verifiedInstalled ? "installed" : "synced", installedAt: verifiedInstalled ? new Date() : null, metadataJson: JSON.stringify(result).slice(0, 500_000), lastError: null });
       } catch (error) {
         await db.updateModelSource(saved.id, ctx.user.id, { status: "failed", lastError: error instanceof Error ? error.message : "فشل التثبيت." });
         throw new TRPCError({ code: "BAD_GATEWAY", message: errorForClient(error) });
@@ -650,6 +656,16 @@ export const appRouter = router({
       }),
   }),
   attachments: router({
+    list: protectedProcedure.query(({ ctx }) => db.listUserAttachments(ctx.user.id)),
+    download: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      try {
+        return await getOwnedAttachmentDownload(ctx.user.id, input.id, db.getUserAttachment, storageGetSignedUrl);
+      } catch (error) {
+        if (error instanceof Error && error.message === "ATTACHMENT_NOT_FOUND") throw new TRPCError({ code: "NOT_FOUND", message: "الملف غير موجود في حسابك." });
+        if (error instanceof Error && error.message === "ATTACHMENT_NOT_READY") throw new TRPCError({ code: "PRECONDITION_FAILED", message: "الملف غير جاهز للتنزيل." });
+        throw new TRPCError({ code: "BAD_GATEWAY", message: errorForClient(error) });
+      }
+    }),
     upload: protectedProcedure.input(z.object({ name: z.string().min(1).max(255), mimeType: z.string().max(160), base64: z.string().min(1), conversationId: z.number().int().positive().optional() })).mutation(async ({ input, ctx }) => {
       enforceUsage({ req: ctx.req, user: ctx.user, kind: "file" });
       try {
