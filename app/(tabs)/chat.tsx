@@ -527,19 +527,18 @@ export default function ChatScreen() {
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => (
             <View
-              className={item.role === "user" ? "items-start" : "items-end"}
+              className={item.role === "user" ? "items-end" : "items-start"}
             >
               <View
                 className={
                   item.role === "user"
-                    ? "max-w-[88%] rounded-[20px] rounded-br-[6px] bg-[#DFF7FD] px-4 py-3"
+                    ? "max-w-[88%] rounded-[20px] rounded-br-[6px] px-4 py-3"
                     : "max-w-[92%] rounded-[20px] rounded-bl-[6px] border bg-surface px-4 py-3"
                 }
-                style={
-                  item.role === "assistant"
-                    ? { borderColor: colors.border }
-                    : undefined
-                }
+                style={{
+                  backgroundColor: item.role === "user" ? colors.primary : colors.surface,
+                  borderColor: colors.border,
+                }}
               >
                 {item.attachments?.map((a) =>
                   a.kind === "image" ? (
@@ -553,6 +552,7 @@ export default function ChatScreen() {
                     <Text
                       key={a.remoteUrl ?? a.uri}
                       className="mb-2 text-right text-[11px] font-semibold text-primary"
+                      style={{ color: item.role === "user" ? colors.background : colors.primary }}
                     >
                       📎 {a.name}
                     </Text>
@@ -561,10 +561,11 @@ export default function ChatScreen() {
                 <Text
                   selectable
                   className="text-right text-[13px] leading-5 text-foreground"
+                  style={{ color: item.role === "user" ? colors.background : colors.foreground }}
                 >
                   {item.text}
                 </Text>
-                <Text className="mt-2 text-right text-[10px] text-muted">
+                <Text className="mt-2 text-right text-[10px]" style={{ color: item.role === "user" ? colors.background : colors.muted }}>
                   {item.time}
                 </Text>
                 <View

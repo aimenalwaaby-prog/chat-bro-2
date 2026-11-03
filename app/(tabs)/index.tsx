@@ -1,11 +1,12 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { BrandHeader, ModelCard, SectionHeading } from "@/components/chatbro-ui";
 import { useColors } from "@/hooks/use-colors";
+import { trpc } from "@/lib/trpc";
 
 const quickActions = [
   ["chat-bubble-outline", "محادثة", "ابدأ مع أي نموذج", "/(tabs)/chat"],
@@ -14,16 +15,30 @@ const quickActions = [
   ["code", "البرمجة", "مساعدو الكود", "/(tabs)/chat"],
 ] as const;
 
-const recentModels = [
-  { name: "Gemini 3 Flash", provider: "Google · خادم مدمج", icon: "bolt" as const, tone: "limited" as const, status: "مجاني محدود", limit: "حسب المزود" },
-  { name: "GPT-5 Mini", provider: "OpenAI · خادم مدمج", icon: "auto-awesome" as const, tone: "limited" as const, status: "حسب الخادم", limit: "حسب الاستخدام" },
-  { name: "Qwen 3 Coder", provider: "Qwen · محلي", icon: "code" as const, tone: "full" as const, status: "محلي", limit: "حسب الجهاز" },
-];
-
 export default function HomeScreen() {
   const router = useRouter();
   const colors = useColors();
   const [prompt, setPrompt] = useState("");
+  const builtInModels = trpc.models.builtIn.useQuery(undefined, { staleTime: 60_000, retry: 0 });
+  const openRouterModels = trpc.models.openRouter.useQuery(undefined, { staleTime: 60_000, retry: 0 });
+  const recommendedModels = useMemo(() => [
+    ...(builtInModels.data?.models ?? []).map((model) => ({
+      name: model.name,
+      provider: `${model.provider} · خادم مدمج`,
+      icon: "auto-awesome" as const,
+      tone: "limited" as const,
+      status: "مفهرس من الخادم",
+      limit: "وفق إعداد المزود",
+    })),
+    ...(openRouterModels.data?.models ?? []).filter((model) => !model.outputModalities?.length || model.outputModalities.includes("text")).map((model) => ({
+      name: model.name,
+      provider: "OpenRouter · فهرس الخادم",
+      icon: "hub" as const,
+      tone: "limited" as const,
+      status: "مفهرس من المصدر",
+      limit: model.contextLength ? `سياق ${model.contextLength.toLocaleString()} رمز` : "حسب المصدر",
+    })),
+  ].slice(0, 6), [builtInModels.data, openRouterModels.data]);
 
   const startChat = () => {
     const value = prompt.trim();
@@ -89,10 +104,17 @@ export default function HomeScreen() {
         </View>
 
         <View className="mt-8">
-          <SectionHeading title="نماذج مقترحة" action="كل النماذج" onAction={() => router.push("/(tabs)/models")} />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row-reverse", paddingLeft: 4 }}>
-            {recentModels.map((model) => <ModelCard key={model.name} {...model} onPress={() => router.push({ pathname: "/(tabs)/chat", params: { model: model.name } })} />)}
-          </ScrollView>
+          <SectionHeading title="نماذج من مصادر مهيأة" action="كل النماذج" onAction={() => router.push("/(tabs)/models")} />
+          {recommendedModels.length ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row-reverse", paddingLeft: 4 }}>
+              {recommendedModels.map((model, index) => <ModelCard key={`${model.provider}:${model.name}:${index}`} {...model} onPress={() => router.push({ pathname: "/(tabs)/chat", params: { model: model.name } })} />)}
+            </ScrollView>
+          ) : (
+            <View className="rounded-2xl border p-4" style={{ backgroundColor: colors.surface, borderColor: colors.border }}>
+              <Text className="text-right text-[11px] font-semibold text-foreground">{builtInModels.isLoading || openRouterModels.isLoading ? "جارٍ تحميل الكتالوج…" : "لا توجد نماذج من المصادر المهيأة حاليًا."}</Text>
+              {(builtInModels.isError || openRouterModels.isError) ? <Text className="mt-1 text-right text-[10px] text-muted">تعذر تحديث أحد الكتالوجات؛ يمكنك فتح شاشة استكشاف والمحاولة مجددًا.</Text> : null}
+            </View>
+          )}
         </View>
 
         <Pressable onPress={() => router.push("/(tabs)/web-sites")} className="mt-7 flex-row-reverse items-center rounded-[22px] border p-4" style={{ backgroundColor: colors.surface, borderColor: colors.border }}>

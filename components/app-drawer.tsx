@@ -114,7 +114,7 @@ export function AppDrawerShell({ children }: { children: ReactNode }) {
           <View style={{ paddingTop: Math.max(insets.top, 16), paddingBottom: Math.max(insets.bottom, 12), flex: 1 }}>
             <View className="mb-3 flex-row-reverse items-center justify-between px-5 pb-3" style={{ borderBottomColor: colors.border, borderBottomWidth: 1 }}>
               <View className="flex-row-reverse items-center gap-2">
-                <View className="h-10 w-10 items-center justify-center rounded-[14px] bg-[#DDF8FF]"><MaterialIcons name="smart-toy" size={23} color="#0787B4" /></View>
+                <View className="h-10 w-10 items-center justify-center rounded-[14px]" style={{ backgroundColor: colors.surface }}><MaterialIcons name="smart-toy" size={23} color={colors.primary} /></View>
                 <View><Text className="text-right text-[16px] font-extrabold text-foreground">Chat Bro</Text><Text className="text-right text-[10px] text-muted">القائمة الرئيسية</Text></View>
               </View>
               <Pressable accessibilityRole="button" accessibilityLabel="إغلاق القائمة" onPress={closeDrawer} className="h-10 w-10 items-center justify-center rounded-xl" style={{ backgroundColor: colors.surface }}><MaterialIcons name="close" size={21} color={colors.foreground} /></Pressable>
@@ -132,6 +132,7 @@ export function AppDrawerShell({ children }: { children: ReactNode }) {
               <DrawerLink icon="widgets" label="النماذج وتصنيفاتها" onPress={() => navigate("/(tabs)/models")} colors={colors} />
               <DrawerLink icon="source" label="مستودعات نماذج AI" onPress={() => navigate("/(tabs)/model-repositories")} colors={colors} />
               <DrawerLink icon="inventory-2" label="مكتبة النماذج" onPress={() => navigate("/(tabs)/model-library")} colors={colors} />
+              <DrawerLink icon="folder-open" label="ملفاتي ومرفقات المحادثات" onPress={() => navigate("/(tabs)/files")} colors={colors} />
               <DrawerLink icon="vpn-key" label="مفاتيح المزودات الخاصة" onPress={() => navigate("/(tabs)/provider-keys")} colors={colors} />
               <DrawerLink icon="image" label="إنشاء الصور" onPress={() => navigate("/(tabs)/images")} colors={colors} />
               {imageModels.data?.models?.slice(0, 8).map((model) => {

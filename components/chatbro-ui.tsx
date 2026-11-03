@@ -102,13 +102,14 @@ export function IconTile({
   onPress?: () => void;
   compact?: boolean;
 }) {
+  const colors = useColors();
   const palette = {
-    blue: { bg: "#DDF8FF", ink: "#0787B4" },
-    purple: { bg: "#EEE5FF", ink: "#7C4DCE" },
-    pink: { bg: "#FFE5EF", ink: "#D65285" },
-    green: { bg: "#E0FAEF", ink: "#148A61" },
-    orange: { bg: "#FFF0D8", ink: "#C47B16" },
-    slate: { bg: "#E8F0F6", ink: "#52728A" },
+    blue: { bg: colors.primary, ink: colors.background },
+    purple: { bg: colors.surface, ink: colors.primary },
+    pink: { bg: colors.surface, ink: colors.error },
+    green: { bg: colors.surface, ink: colors.success },
+    orange: { bg: colors.surface, ink: colors.warning },
+    slate: { bg: colors.surface, ink: colors.muted },
   }[tone];
   return (
     <Pressable
@@ -135,16 +136,17 @@ export function StatusBadge({
   label: string;
   tone: "full" | "limited" | "trial" | "paid";
 }) {
+  const colors = useColors();
   const styles = {
-    full: { bg: "#E4F8EE", ink: "#198C60", dot: "#25B97B" },
-    limited: { bg: "#FFF4D8", ink: "#B67812", dot: "#E4A52E" },
-    trial: { bg: "#FFE9DF", ink: "#C8623C", dot: "#E2784F" },
-    paid: { bg: "#F0EAF7", ink: "#7A5A9E", dot: "#9876BA" },
+    full: { dot: colors.success },
+    limited: { dot: colors.warning },
+    trial: { dot: colors.error },
+    paid: { dot: colors.primary },
   }[tone];
   return (
-    <View style={{ backgroundColor: styles.bg }} className="flex-row-reverse items-center gap-1.5 self-start rounded-full px-2.5 py-1">
+    <View style={{ backgroundColor: colors.background }} className="flex-row-reverse items-center gap-1.5 self-start rounded-full px-2.5 py-1">
       <View style={{ backgroundColor: styles.dot }} className="h-1.5 w-1.5 rounded-full" />
-      <Text style={{ color: styles.ink }} className="text-[10px] font-bold">{label}</Text>
+      <Text style={{ color: colors.foreground }} className="text-[10px] font-bold">{label}</Text>
     </View>
   );
 }
@@ -177,8 +179,8 @@ export function ModelCard({
       className="mr-3 w-[214px] rounded-[22px] border p-4"
     >
       <View className="flex-row-reverse items-start justify-between">
-        <View className="h-10 w-10 items-center justify-center rounded-[14px] bg-[#E6F8FD]">
-          <MaterialIcons name={icon} size={21} color="#0787B4" />
+        <View className="h-10 w-10 items-center justify-center rounded-[14px]" style={{ backgroundColor: colors.surface }}>
+          <MaterialIcons name={icon} size={21} color={colors.primary} />
         </View>
         <StatusBadge label={status} tone={tone} />
       </View>
@@ -186,7 +188,7 @@ export function ModelCard({
       <Text className="mt-0.5 text-[11px] text-muted text-right">{provider}</Text>
       <View className="mt-3 flex-row-reverse items-center justify-between">
         <Text className="text-[10px] text-muted">{limit}</Text>
-        <Text className="text-[10px] font-semibold text-primary">آخر تحقق · ٣س</Text>
+        <Text className="text-[10px] font-semibold text-primary">فتح المحادثة</Text>
       </View>
     </Pressable>
   );
@@ -204,7 +206,7 @@ export function EmptyState({
   const colors = useColors();
   return (
     <View className="items-center justify-center rounded-[26px] border border-dashed p-8" style={{ borderColor: colors.border }}>
-      <View className="h-14 w-14 items-center justify-center rounded-[20px] bg-[#E7F8FC]">
+      <View className="h-14 w-14 items-center justify-center rounded-[20px]" style={{ backgroundColor: colors.surface }}>
         <MaterialIcons name={icon} size={28} color={colors.primary} />
       </View>
       <Text className="mt-4 text-[16px] font-bold text-foreground text-center">{title}</Text>
@@ -214,8 +216,9 @@ export function EmptyState({
 }
 
 export function ProgressLine({ value, color = "#42D9FF" }: { value: number; color?: string }) {
+  const colors = useColors();
   return (
-    <View className="h-1.5 overflow-hidden rounded-full bg-[#DCECF2]">
+    <View className="h-1.5 overflow-hidden rounded-full" style={{ backgroundColor: colors.border }}>
       <View style={{ width: `${Math.max(0, Math.min(value, 100))}%`, backgroundColor: color }} className="h-full rounded-full" />
     </View>
   );
